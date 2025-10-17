@@ -82,16 +82,21 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     GLint projLoc = glGetUniformLocation(m_shaderProgram, "projection");
     GLint viewLoc = glGetUniformLocation(m_shaderProgram, "view");
     GLint modelLoc = glGetUniformLocation(m_shaderProgram, "model");
+    GLint modeLoc = glGetUniformLocation(m_shaderProgram, "renderMode");
     
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1i(modeLoc, m_renderMode == RenderMode::WIREFRAME ? 1 : 0);
     
     // Set render mode
     if (m_renderMode == RenderMode::WIREFRAME) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glEnable(GL_LINE_SMOOTH);
+        glLineWidth(1.5f);
     } else {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDisable(GL_LINE_SMOOTH);
     }
     
     // Draw

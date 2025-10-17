@@ -14,7 +14,8 @@ class Application {
 public:
     Application() : m_window(nullptr), m_glContext(nullptr), m_running(false), 
                     m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f),
-                    m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f) {}
+                    m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
+                    m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0) {}
     
     ~Application() {
         cleanup();
@@ -80,8 +81,11 @@ public:
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         
-        // Set clear color
-        glClearColor(0.2f, 0.2f, 0.25f, 1.0f);
+        // Set clear color to black (gradient will cover it)
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        
+        // Initialize background gradient
+        initBackgroundGradient();
         
         // Initialize renderer
         if (!m_renderer.initialize()) {
@@ -122,6 +126,80 @@ public:
     }
     
 private:
+    void initBackgroundGradient() {
+        // Fullscreen quad vertices (positions + colors)
+        float vertices[] = {
+            // positions        // colors (dark blue at top, black at bottom)
+            -1.0f,  1.0f, 0.0f,  0.0f, 0.05f, 0.15f,  // top-left
+             1.0f,  1.0f, 0.0f,  0.0f, 0.05f, 0.15f,  // top-right
+            -1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 0.0f,    // bottom-left
+             1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 0.0f     // bottom-right
+        };
+        
+        glGenVertexArrays(1, &m_bgVAO);
+        glGenBuffers(1, &m_bgVBO);
+        
+        glBindVertexArray(m_bgVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_bgVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        
+        // Position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        // Color attribute
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        
+        glBindVertexArray(0);
+        
+        // Create simple shader for gradient
+        const char* vertexShaderSrc = R"(
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
+            out vec3 Color;
+            void main() {
+                Color = aColor;
+                gl_Position = vec4(aPos, 1.0);
+            }
+        )";
+        
+        const char* fragmentShaderSrc = R"(
+            #version 330 core
+            in vec3 Color;
+            out vec4 FragColor;
+            void main() {
+                FragColor = vec4(Color, 1.0);
+            }
+        )";
+        
+        GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vertexShader, 1, &vertexShaderSrc, nullptr);
+        glCompileShader(vertexShader);
+        
+        GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fragmentShader, 1, &fragmentShaderSrc, nullptr);
+        glCompileShader(fragmentShader);
+        
+        m_bgShaderProgram = glCreateProgram();
+        glAttachShader(m_bgShaderProgram, vertexShader);
+        glAttachShader(m_bgShaderProgram, fragmentShader);
+        glLinkProgram(m_bgShaderProgram);
+        
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+    }
+    
+    void renderBackground() {
+        glDepthMask(GL_FALSE); // Don't write to depth buffer
+        glUseProgram(m_bgShaderProgram);
+        glBindVertexArray(m_bgVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+        glDepthMask(GL_TRUE); // Re-enable depth writing
+    }
+    
     void updateFPS() {
         m_frameCount++;
         Uint64 currentTime = SDL_GetTicksNS();
@@ -148,7 +226,6 @@ private:
                     break;
                     
                 case SDL_EVENT_KEY_DOWN:
-                    std::cout << "Key pressed: " << SDL_GetKeyName(event.key.key) << std::endl;
                     handleKeyPress(event.key.key);
                     break;
                     
@@ -213,20 +290,24 @@ private:
     void render() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
+        // Render background gradient
+        renderBackground();
+        
         int width, height;
         SDL_GetWindowSize(m_window, &width, &height);
         float aspect = static_cast<float>(width) / static_cast<float>(height);
         
-        // Orthogonal projection
+        // Orthogonal projection with large depth range
         float orthoSize = m_zoom;
+        float maxExtent = m_renderer.getMesh() ? m_renderer.getMesh()->getMaxExtent() : 100.0f;
         glm::mat4 projection = glm::ortho(
             -orthoSize * aspect, orthoSize * aspect,
             -orthoSize, orthoSize,
-            0.1f, 1000.0f
+            -maxExtent * 10.0f, maxExtent * 10.0f  // Much larger near/far planes
         );
         
-        // View matrix (camera looking from distance)
-        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -10.0f));
+        // View matrix (identity - no camera movement needed for ortho)
+        glm::mat4 view = glm::mat4(1.0f);
         
         // Model matrix (rotation and centering)
         glm::mat4 model = glm::mat4(1.0f);
@@ -245,6 +326,10 @@ private:
     }
     
     void cleanup() {
+        if (m_bgVAO) glDeleteVertexArrays(1, &m_bgVAO);
+        if (m_bgVBO) glDeleteBuffers(1, &m_bgVBO);
+        if (m_bgShaderProgram) glDeleteProgram(m_bgShaderProgram);
+        
         if (m_glContext) {
             SDL_GL_DestroyContext(m_glContext);
             m_glContext = nullptr;
@@ -268,6 +353,11 @@ private:
     Uint32 m_frameCount;
     Uint64 m_lastFpsTime;
     float m_fps;
+    
+    // Background gradient
+    GLuint m_bgVAO;
+    GLuint m_bgVBO;
+    GLuint m_bgShaderProgram;
 };
 
 int main(int argc, char* argv[]) {
