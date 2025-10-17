@@ -1,0 +1,10 @@
+{
+  "name": "mystlviewer",
+  "version": "1.0.0",
+  "description": "Modern OpenGL STL file viewer using SDL3",
+  "dependencies": [
+    "sdl3",
+    "glad",
+    "glm"
+  ]
+}
