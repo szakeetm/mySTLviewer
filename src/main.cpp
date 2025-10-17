@@ -2,6 +2,7 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <nfd.h>
 #include <iostream>
 #include "STLLoader.h"
 #include "Renderer.h"
@@ -223,21 +224,48 @@ private:
 };
 
 int main(int argc, char* argv[]) {
+    std::string stlFile;
+    
+    // If no command line argument, open file dialog
     if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << " <stl_file>" << std::endl;
-        std::cout << "\nControls:" << std::endl;
-        std::cout << "  Left Mouse + Drag: Rotate model" << std::endl;
-        std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
-        std::cout << "  W: Wireframe mode" << std::endl;
-        std::cout << "  S: Solid mode" << std::endl;
-        std::cout << "  R: Reset view" << std::endl;
-        std::cout << "  Q/ESC: Quit" << std::endl;
-        return 1;
+        // Initialize NFD
+        NFD_Init();
+        
+        nfdchar_t* outPath = nullptr;
+        nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
+        nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
+        
+        if (result == NFD_OKAY) {
+            stlFile = outPath;
+            NFD_FreePath(outPath);
+            std::cout << "Selected file: " << stlFile << std::endl;
+        } else if (result == NFD_CANCEL) {
+            std::cout << "User cancelled file selection" << std::endl;
+            NFD_Quit();
+            return 0;
+        } else {
+            std::cerr << "Error opening file dialog: " << NFD_GetError() << std::endl;
+            NFD_Quit();
+            return 1;
+        }
+        
+        NFD_Quit();
+    } else {
+        stlFile = argv[1];
     }
+    
+    // Display controls
+    std::cout << "\nControls:" << std::endl;
+    std::cout << "  Left Mouse + Drag: Rotate model" << std::endl;
+    std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
+    std::cout << "  W: Wireframe mode" << std::endl;
+    std::cout << "  S: Solid mode" << std::endl;
+    std::cout << "  R: Reset view" << std::endl;
+    std::cout << "  Q/ESC: Quit" << std::endl;
     
     Application app;
     
-    if (!app.initialize(argv[1])) {
+    if (!app.initialize(stlFile)) {
         std::cerr << "Failed to initialize application" << std::endl;
         return 1;
     }
