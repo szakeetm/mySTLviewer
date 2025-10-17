@@ -13,7 +13,8 @@ const int WINDOW_HEIGHT = 768;
 class Application {
 public:
     Application() : m_window(nullptr), m_glContext(nullptr), m_running(false), 
-                    m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f) {}
+                    m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f),
+                    m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f) {}
     
     ~Application() {
         cleanup();
@@ -21,7 +22,7 @@ public:
     
     bool initialize(const std::string& stlFile) {
         // Initialize SDL
-        if (!SDL_Init(SDL_INIT_VIDEO)) {
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
             std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
             return false;
         }
@@ -45,11 +46,22 @@ public:
             return false;
         }
         
+        // Raise window and give it input focus
+        SDL_RaiseWindow(m_window);
+        SDL_SetWindowKeyboardGrab(m_window, false);
+        
         // Create OpenGL context
         m_glContext = SDL_GL_CreateContext(m_window);
         if (!m_glContext) {
             std::cerr << "OpenGL context creation failed: " << SDL_GetError() << std::endl;
             return false;
+        }
+        
+        // Enable VSync
+        if (!SDL_GL_SetSwapInterval(1)) {
+            std::cerr << "Warning: VSync not supported: " << SDL_GetError() << std::endl;
+        } else {
+            std::cout << "VSync enabled" << std::endl;
         }
         
         // Initialize GLAD
@@ -99,14 +111,34 @@ public:
     
     void run() {
         m_running = true;
+        m_lastFpsTime = SDL_GetTicksNS();
+        m_frameCount = 0;
         
         while (m_running) {
             handleEvents();
             render();
+            updateFPS();
         }
     }
     
 private:
+    void updateFPS() {
+        m_frameCount++;
+        Uint64 currentTime = SDL_GetTicksNS();
+        Uint64 elapsed = currentTime - m_lastFpsTime;
+        
+        // Update FPS every second (1 billion nanoseconds)
+        if (elapsed >= 1000000000ULL) {
+            m_fps = m_frameCount * 1000000000.0f / elapsed;
+            
+            // Update window title with FPS
+            std::string title = "STL Viewer - FPS: " + std::to_string(static_cast<int>(m_fps));
+            SDL_SetWindowTitle(m_window, title.c_str());
+            
+            m_frameCount = 0;
+            m_lastFpsTime = currentTime;
+        }
+    }
     void handleEvents() {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -116,11 +148,12 @@ private:
                     break;
                     
                 case SDL_EVENT_KEY_DOWN:
+                    std::cout << "Key pressed: " << SDL_GetKeyName(event.key.key) << std::endl;
                     handleKeyPress(event.key.key);
                     break;
                     
                 case SDL_EVENT_MOUSE_MOTION:
-                    if (event.motion.state & SDL_BUTTON_LMASK) {
+                    if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) {
                         m_rotationY += event.motion.xrel * 0.5f;
                         m_rotationX += event.motion.yrel * 0.5f;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
@@ -128,8 +161,12 @@ private:
                     break;
                     
                 case SDL_EVENT_MOUSE_WHEEL:
-                    m_zoom -= event.wheel.y * 0.1f;
-                    m_zoom = glm::max(0.1f, m_zoom);
+                    {
+                        // Scale zoom speed with current zoom level (5% of current zoom)
+                        float zoomDelta = event.wheel.y * m_zoom * 0.1f;
+                        m_zoom -= zoomDelta;
+                        m_zoom = glm::max(0.1f, m_zoom);
+                    }
                     break;
                     
                 case SDL_EVENT_WINDOW_RESIZED:
@@ -142,28 +179,33 @@ private:
     void handleKeyPress(SDL_Keycode key) {
         switch (key) {
             case SDLK_ESCAPE:
+                std::cout << "ESC pressed - Quitting" << std::endl;
+                m_running = false;
+                break;
+                
             case SDLK_Q:
+                std::cout << "Q pressed - Quitting" << std::endl;
                 m_running = false;
                 break;
                 
             case SDLK_W:
+                std::cout << "W pressed - Switching to wireframe mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::WIREFRAME);
-                std::cout << "Wireframe mode" << std::endl;
                 break;
                 
             case SDLK_S:
+                std::cout << "S pressed - Switching to solid mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::SOLID);
-                std::cout << "Solid mode" << std::endl;
                 break;
                 
             case SDLK_R:
+                std::cout << "R pressed - Resetting view" << std::endl;
                 m_rotationX = 30.0f;
                 m_rotationY = 45.0f;
                 if (m_renderer.getMesh()) {
                     float extent = m_renderer.getMesh()->getMaxExtent();
                     m_zoom = extent * 1.5f;
                 }
-                std::cout << "View reset" << std::endl;
                 break;
         }
     }
@@ -221,6 +263,11 @@ private:
     float m_rotationX;
     float m_rotationY;
     float m_zoom;
+    
+    // FPS tracking
+    Uint32 m_frameCount;
+    Uint64 m_lastFpsTime;
+    float m_fps;
 };
 
 int main(int argc, char* argv[]) {
