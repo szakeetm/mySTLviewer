@@ -8,7 +8,7 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 - **Modern OpenGL**: Uses OpenGL 3.3+ with programmable shaders
 - **Dual Render Modes**: Switch between solid and wireframe rendering
 - **Orthogonal Projection**: Clean orthographic view of 3D models
-- **Interactive Controls**: Mouse-based rotation and zoom
+- **Interactive Controls**: Mouse-based rotation, pan, and zoom
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
 
 ## Prerequisites
@@ -69,9 +69,11 @@ mySTLViewer <stl_file>
 ### Controls
 
 - **Left Mouse Button + Drag**: Rotate the model
+- **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
 - **W**: Switch to wireframe mode
 - **S**: Switch to solid mode
+- **V**: Toggle VSync
 - **R**: Reset view to default position
 - **Q** or **ESC**: Quit application
 
@@ -118,7 +120,7 @@ The project uses the following libraries managed by vcpkg:
 
 ### OpenGL Features
 
-- Modern OpenGL 3.3 Core Profile
+- Modern OpenGL 3.3 Core Profile (required)
 - Vertex Array Objects (VAO)
 - Vertex Buffer Objects (VBO)
 - Element Buffer Objects (EBO)
@@ -137,7 +139,7 @@ git pull
 
 ### OpenGL version errors
 
-Ensure your graphics drivers are up to date and support OpenGL 3.3 or higher.
+Ensure your graphics drivers are up to date and support OpenGL 3.3 or higher. The application checks and exits early if the runtime OpenGL version is below 3.3.
 
 ### Shader compilation errors
 

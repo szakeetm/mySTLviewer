@@ -91,7 +91,17 @@ public:
             return false;
         }
         
+        // Verify OpenGL version >= 3.3
+        GLint glMajor = 0, glMinor = 0;
+        glGetIntegerv(GL_MAJOR_VERSION, &glMajor);
+        glGetIntegerv(GL_MINOR_VERSION, &glMinor);
         std::cout << "OpenGL " << glGetString(GL_VERSION) << std::endl;
+        if (glMajor < 3 || (glMajor == 3 && glMinor < 3)) {
+            std::cerr << "Error: OpenGL 3.3 or newer is required. Detected "
+                      << glMajor << "." << glMinor << std::endl;
+            std::cerr << "Please update your graphics drivers or run on a system with OpenGL 3.3+ support." << std::endl;
+            return false;
+        }
         
     // Enable depth testing
         glEnable(GL_DEPTH_TEST);
