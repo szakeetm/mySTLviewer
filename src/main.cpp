@@ -2,8 +2,10 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <nfd.h>
 #include <iostream>
+#include <limits>
 #include "STLLoader.h"
 #include "Renderer.h"
 
@@ -16,7 +18,9 @@ public:
                     m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f),
                     m_pan(0.0f, 0.0f),
                     m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
-                    m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0) {}
+                    m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0),
+                    m_pivotActive(false), m_pivotModel(0.0f),
+                    m_axesVAO(0), m_axesVBO(0), m_axesProgram(0), m_axisLength(0.0f) {}
     
     ~Application() {
         cleanup();
@@ -121,6 +125,8 @@ public:
         
     // Initialize background gradient
         initBackgroundGradient();
+        // Initialize axes renderer
+        initAxesRenderer();
         
         // Initialize renderer
         if (!m_renderer.initialize()) {
@@ -164,6 +170,7 @@ public:
                 if (m_renderer.getMesh()) {
                     float extent = m_renderer.getMesh()->getMaxExtent();
                     m_zoom = extent * 1.5f;
+                    m_axisLength = extent * 0.1f; // size of pivot axes
                 }
             } else {
                 std::cerr << "Failed to load STL file: " << selectedFile << std::endl;
@@ -252,6 +259,54 @@ private:
         glDeleteShader(fragmentShader);
     }
     
+    void initAxesRenderer() {
+        // Simple shader for colored lines in world space
+        const char* vsrc = R"(
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
+            uniform mat4 projection;
+            uniform mat4 view;
+            out vec3 Color;
+            void main(){
+                Color = aColor;
+                gl_Position = projection * view * vec4(aPos, 1.0);
+            }
+        )";
+        const char* fsrc = R"(
+            #version 330 core
+            in vec3 Color;
+            out vec4 FragColor;
+            void main(){
+                FragColor = vec4(Color, 1.0);
+            }
+        )";
+        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vs, 1, &vsrc, nullptr);
+        glCompileShader(vs);
+        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fs, 1, &fsrc, nullptr);
+        glCompileShader(fs);
+        m_axesProgram = glCreateProgram();
+        glAttachShader(m_axesProgram, vs);
+        glAttachShader(m_axesProgram, fs);
+        glLinkProgram(m_axesProgram);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        glGenVertexArrays(1, &m_axesVAO);
+        glGenBuffers(1, &m_axesVBO);
+        glBindVertexArray(m_axesVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_axesVBO);
+        // allocate dynamic buffer for 6 vertices (pos+color)
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * (3 + 3), nullptr, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        glBindVertexArray(0);
+    }
+
     void renderBackground() {
         // Ensure background renders regardless of current GL state
         GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
@@ -324,6 +379,7 @@ private:
                                     m_zoom = extent * 1.5f;
                                 }
                                 m_pan = glm::vec2(0.0f);
+                                m_pivotActive = false;
                                 break;
                             default:
                                 break;
@@ -332,7 +388,7 @@ private:
                     break;
                     
                 case SDL_EVENT_MOUSE_MOTION:
-                    if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) {
+                    if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
                         m_rotationY += event.motion.xrel * 0.25f;
                         m_rotationX += event.motion.yrel * 0.25f;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
@@ -348,6 +404,13 @@ private:
                         // Update pan so the model follows the mouse (drag right -> model right, drag down -> model down)
                         m_pan.x += event.motion.xrel * worldPerPixelX;
                         m_pan.y -= event.motion.yrel * worldPerPixelY;
+                    }
+                    break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        int mx = event.button.x;
+                        int my = event.button.y;
+                        pickPivot(mx, my);
                     }
                     break;
                     
@@ -409,6 +472,7 @@ private:
                     m_zoom = extent * 1.5f;
                 }
                 m_pan = glm::vec2(0.0f);
+                m_pivotActive = false;
                 break;
             default:
                 // no-op
@@ -435,21 +499,33 @@ private:
             -maxExtent * 10.0f, maxExtent * 10.0f  // Much larger near/far planes
         );
         
-    // View matrix with panning in XY (ortho)
-    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(m_pan.x, m_pan.y, 0.0f));
+        // View matrix with panning in XY (ortho)
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(m_pan.x, m_pan.y, 0.0f));
         
         // Model matrix (rotation and centering)
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::rotate(model, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::rotate(model, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
-        
-        // Center the model
         if (m_renderer.getMesh()) {
             glm::vec3 center = m_renderer.getMesh()->getCenter();
-            model = glm::translate(model, -center);
+            if (m_pivotActive) {
+                glm::vec3 pPrime = m_pivotModel - center;
+                model = glm::translate(model, pPrime);
+                model = glm::rotate(model, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::translate(model, -pPrime);
+                model = glm::translate(model, -center);
+            } else {
+                model = glm::rotate(model, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::translate(model, -center);
+            }
         }
         
         m_renderer.render(projection, view, model);
+
+        // Draw pivot axes if active
+        if (m_pivotActive && m_renderer.getMesh()) {
+            drawPivotAxes(projection, view, model);
+        }
         
         SDL_GL_SwapWindow(m_window);
     }
@@ -458,9 +534,12 @@ private:
         if (!SDL_StopTextInput(m_window)) {
             // not fatal
         }
-        if (m_bgVAO) glDeleteVertexArrays(1, &m_bgVAO);
-        if (m_bgVBO) glDeleteBuffers(1, &m_bgVBO);
-        if (m_bgShaderProgram) glDeleteProgram(m_bgShaderProgram);
+    if (m_bgVAO) glDeleteVertexArrays(1, &m_bgVAO);
+    if (m_bgVBO) glDeleteBuffers(1, &m_bgVBO);
+    if (m_bgShaderProgram) glDeleteProgram(m_bgShaderProgram);
+    if (m_axesVAO) glDeleteVertexArrays(1, &m_axesVAO);
+    if (m_axesVBO) glDeleteBuffers(1, &m_axesVBO);
+    if (m_axesProgram) glDeleteProgram(m_axesProgram);
         
         if (m_glContext) {
             SDL_GL_DestroyContext(m_glContext);
@@ -491,6 +570,157 @@ private:
     GLuint m_bgVAO;
     GLuint m_bgVBO;
     GLuint m_bgShaderProgram;
+
+    // Pivot selection and axes rendering
+    bool m_pivotActive;
+    glm::vec3 m_pivotModel;
+    GLuint m_axesVAO;
+    GLuint m_axesVBO;
+    GLuint m_axesProgram;
+    float m_axisLength;
+
+    void pickPivot(int mouseX, int mouseY) {
+        if (!m_renderer.getMesh()) return;
+        int width = 1, height = 1;
+        SDL_GetWindowSize(m_window, &width, &height);
+        float aspect = static_cast<float>(width) / static_cast<float>(height);
+        float orthoSize = m_zoom;
+        float maxExtent = m_renderer.getMesh() ? m_renderer.getMesh()->getMaxExtent() : 100.0f;
+        glm::mat4 projection = glm::ortho(
+            -orthoSize * aspect, orthoSize * aspect,
+            -orthoSize, orthoSize,
+            -maxExtent * 10.0f, maxExtent * 10.0f);
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(m_pan.x, m_pan.y, 0.0f));
+
+        // Model matrix BEFORE changing pivot (respect current state)
+        glm::mat4 modelOld = glm::mat4(1.0f);
+        glm::vec3 center = m_renderer.getMesh()->getCenter();
+        if (m_pivotActive) {
+            glm::vec3 pPrime = m_pivotModel - center;
+            modelOld = glm::translate(modelOld, pPrime);
+            modelOld = glm::rotate(modelOld, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+            modelOld = glm::rotate(modelOld, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+            modelOld = glm::translate(modelOld, -pPrime);
+            modelOld = glm::translate(modelOld, -center);
+        } else {
+            modelOld = glm::rotate(modelOld, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+            modelOld = glm::rotate(modelOld, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+            modelOld = glm::translate(modelOld, -center);
+        }
+
+        const auto& verts = m_renderer.getMesh()->vertices;
+        float bestDist2 = std::numeric_limits<float>::infinity();
+        glm::vec3 bestPos(0.0f);
+        for (const auto& v : verts) {
+            glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
+            if (clip.w == 0.0f) continue;
+            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            // Convert to screen coords (origin top-left)
+            float sx = (ndc.x * 0.5f + 0.5f) * width;
+            float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
+            float dx = sx - mouseX;
+            float dy = sy - mouseY;
+            float d2 = dx*dx + dy*dy;
+            if (d2 < bestDist2) {
+                bestDist2 = d2;
+                bestPos = v.position; // model-space
+            }
+        }
+        if (!(bestDist2 < std::numeric_limits<float>::infinity())) {
+            return;
+        }
+
+        // If too far from any vertex, disable pivot mode
+        const float maxPixelDist = 100.0f;
+        if (bestDist2 > maxPixelDist * maxPixelDist) {
+            if (m_pivotActive) {
+                // Keep the current pivot point fixed on screen when disabling pivot
+                glm::vec4 worldBefore4 = modelOld * glm::vec4(m_pivotModel, 1.0f);
+                glm::vec3 worldBefore(worldBefore4);
+                glm::mat4 modelNoPivot = glm::mat4(1.0f);
+                modelNoPivot = glm::rotate(modelNoPivot, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+                modelNoPivot = glm::rotate(modelNoPivot, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+                modelNoPivot = glm::translate(modelNoPivot, -center);
+                glm::vec4 worldAfter4 = modelNoPivot * glm::vec4(m_pivotModel, 1.0f);
+                glm::vec3 worldAfter(worldAfter4);
+                glm::vec3 delta = worldAfter - worldBefore;
+                m_pan.x -= delta.x;
+                m_pan.y -= delta.y;
+                std::cout << "Click far from vertices; pivot disabled" << std::endl;
+            }
+            m_pivotActive = false;
+            return;
+        }
+
+        // Prevent view jump: compensate pan so the selected vertex stays in place
+        glm::vec4 worldBefore4 = modelOld * glm::vec4(bestPos, 1.0f);
+        glm::vec3 worldBefore(worldBefore4);
+
+        // Build model AFTER changing pivot to the new selection
+        glm::mat4 modelNew = glm::mat4(1.0f);
+        glm::vec3 pPrimeNew = bestPos - center;
+        modelNew = glm::translate(modelNew, pPrimeNew);
+        modelNew = glm::rotate(modelNew, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+        modelNew = glm::rotate(modelNew, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelNew = glm::translate(modelNew, -pPrimeNew);
+        modelNew = glm::translate(modelNew, -center);
+
+        glm::vec4 worldAfter4 = modelNew * glm::vec4(bestPos, 1.0f);
+        glm::vec3 worldAfter(worldAfter4);
+        glm::vec3 delta = worldAfter - worldBefore;
+
+        // Adjust pan to counteract the delta
+        m_pan.x -= delta.x;
+        m_pan.y -= delta.y;
+
+        // Finally, set the pivot
+        m_pivotModel = bestPos;
+        m_pivotActive = true;
+        std::cout << "Pivot selected at model coords: (" << bestPos.x << ", " << bestPos.y << ", " << bestPos.z << ")" << std::endl;
+    }
+
+    void drawPivotAxes(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
+        if (!m_axesProgram) return;
+        // Compute world-space pivot position and axis directions from model matrix
+        glm::vec4 worldPivot4 = model * glm::vec4(m_pivotModel, 1.0f);
+        glm::vec3 worldPivot(worldPivot4);
+        glm::mat3 rot = glm::mat3(model); // extract rotation+scale; our model has only rotation
+        glm::vec3 dirX = glm::normalize(rot * glm::vec3(1,0,0)) * m_axisLength;
+        glm::vec3 dirY = glm::normalize(rot * glm::vec3(0,1,0)) * m_axisLength;
+        glm::vec3 dirZ = glm::normalize(rot * glm::vec3(0,0,1)) * m_axisLength;
+
+        float data[6 * 6]; // 6 vertices, each pos(3) + color(3)
+        auto put = [&](int idx, const glm::vec3& p, const glm::vec3& c){
+            data[idx*6 + 0] = p.x; data[idx*6 + 1] = p.y; data[idx*6 + 2] = p.z;
+            data[idx*6 + 3] = c.r; data[idx*6 + 4] = c.g; data[idx*6 + 5] = c.b;
+        };
+        // X axis - red
+        put(0, worldPivot, glm::vec3(1,0,0));
+        put(1, worldPivot + dirX, glm::vec3(1,0,0));
+        // Y axis - green
+        put(2, worldPivot, glm::vec3(0,1,0));
+        put(3, worldPivot + dirY, glm::vec3(0,1,0));
+        // Z axis - blue
+        put(4, worldPivot, glm::vec3(0,0,1));
+        put(5, worldPivot + dirZ, glm::vec3(0,0,1));
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_axesVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(data), data);
+
+        // Draw with depth disabled so axes are visible
+        GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(m_axesProgram);
+        GLint projLoc = glGetUniformLocation(m_axesProgram, "projection");
+        GLint viewLoc = glGetUniformLocation(m_axesProgram, "view");
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glBindVertexArray(m_axesVAO);
+        glLineWidth(2.0f);
+        glDrawArrays(GL_LINES, 0, 6);
+        glBindVertexArray(0);
+        if (wasDepth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    }
 };
 
 int main(int argc, char* argv[]) {
@@ -501,7 +731,8 @@ int main(int argc, char* argv[]) {
     
     // Display controls
     std::cout << "\nControls:" << std::endl;
-    std::cout << "  Left Mouse + Drag: Rotate model" << std::endl;
+    std::cout << "  Right Mouse + Drag: Rotate model" << std::endl;
+    std::cout << "  Left Mouse: Pick pivot (draw axes)" << std::endl;
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
