@@ -33,7 +33,10 @@ public:
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    // Request MSAA 4x for antialiased wireframe edges
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
         
         // Create window
         m_window = SDL_CreateWindow(
@@ -47,9 +50,12 @@ public:
             return false;
         }
         
-        // Raise window and give it input focus
+    // Raise window and give it input focus
         SDL_RaiseWindow(m_window);
         SDL_SetWindowKeyboardGrab(m_window, false);
+        if (!SDL_StartTextInput(m_window)) { // enable text input events as a fallback
+            std::cerr << "Warning: failed to start text input: " << SDL_GetError() << std::endl;
+        }
         
         // Create OpenGL context
         m_glContext = SDL_GL_CreateContext(m_window);
@@ -73,9 +79,11 @@ public:
         
         std::cout << "OpenGL " << glGetString(GL_VERSION) << std::endl;
         
-        // Enable depth testing
+    // Enable depth testing
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
+    // Enable multisampling if available
+    glEnable(GL_MULTISAMPLE);
         
         // Enable back-face culling
         glEnable(GL_CULL_FACE);
@@ -226,7 +234,38 @@ private:
                     break;
                     
                 case SDL_EVENT_KEY_DOWN:
-                    handleKeyPress(event.key.key);
+                    // Use scancodes for robust key handling across layouts
+                    handleKeyPress(event.key.scancode, event.key.mod);
+                    break;
+                case SDL_EVENT_TEXT_INPUT:
+                    if (event.text.text && event.text.text[0] != '\0') {
+                        char c = event.text.text[0];
+                        switch (c) {
+                            case 'q': case 'Q':
+                                std::cout << "Q pressed (text) - Quitting" << std::endl;
+                                m_running = false;
+                                break;
+                            case 'w': case 'W':
+                                std::cout << "W pressed (text) - Switching to wireframe mode" << std::endl;
+                                m_renderer.setRenderMode(RenderMode::WIREFRAME);
+                                break;
+                            case 's': case 'S':
+                                std::cout << "S pressed (text) - Switching to solid mode" << std::endl;
+                                m_renderer.setRenderMode(RenderMode::SOLID);
+                                break;
+                            case 'r': case 'R':
+                                std::cout << "R pressed (text) - Resetting view" << std::endl;
+                                m_rotationX = 30.0f;
+                                m_rotationY = 45.0f;
+                                if (m_renderer.getMesh()) {
+                                    float extent = m_renderer.getMesh()->getMaxExtent();
+                                    m_zoom = extent * 1.5f;
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    }
                     break;
                     
                 case SDL_EVENT_MOUSE_MOTION:
@@ -253,29 +292,25 @@ private:
         }
     }
     
-    void handleKeyPress(SDL_Keycode key) {
-        switch (key) {
-            case SDLK_ESCAPE:
+    void handleKeyPress(SDL_Scancode scancode, SDL_Keymod /*mod*/) {
+        switch (scancode) {
+            case SDL_SCANCODE_ESCAPE:
                 std::cout << "ESC pressed - Quitting" << std::endl;
                 m_running = false;
                 break;
-                
-            case SDLK_Q:
+            case SDL_SCANCODE_Q:
                 std::cout << "Q pressed - Quitting" << std::endl;
                 m_running = false;
                 break;
-                
-            case SDLK_W:
+            case SDL_SCANCODE_W:
                 std::cout << "W pressed - Switching to wireframe mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::WIREFRAME);
                 break;
-                
-            case SDLK_S:
+            case SDL_SCANCODE_S:
                 std::cout << "S pressed - Switching to solid mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::SOLID);
                 break;
-                
-            case SDLK_R:
+            case SDL_SCANCODE_R:
                 std::cout << "R pressed - Resetting view" << std::endl;
                 m_rotationX = 30.0f;
                 m_rotationY = 45.0f;
@@ -283,6 +318,9 @@ private:
                     float extent = m_renderer.getMesh()->getMaxExtent();
                     m_zoom = extent * 1.5f;
                 }
+                break;
+            default:
+                // no-op
                 break;
         }
     }
@@ -326,6 +364,9 @@ private:
     }
     
     void cleanup() {
+        if (!SDL_StopTextInput(m_window)) {
+            // not fatal
+        }
         if (m_bgVAO) glDeleteVertexArrays(1, &m_bgVAO);
         if (m_bgVBO) glDeleteBuffers(1, &m_bgVBO);
         if (m_bgShaderProgram) glDeleteProgram(m_bgShaderProgram);
