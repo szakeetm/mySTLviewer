@@ -6,6 +6,7 @@
 #include <nfd.h>
 #include <iostream>
 #include <limits>
+#include <vector>
 #include "STLLoader.h"
 #include "Renderer.h"
 
@@ -26,7 +27,7 @@ public:
 #else
                     , m_useOpenMP(false)
 #endif
-                    {}
+                    , m_cacheValid(false) {}
     
     ~Application() {
         cleanup();
@@ -364,6 +365,7 @@ private:
                         m_rotationY += event.motion.xrel * 0.25f;
                         m_rotationX += event.motion.yrel * 0.25f;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
+                        m_cacheValid = false;
                     }
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) {
                         int width = 1, height = 1;
@@ -376,12 +378,21 @@ private:
                         // Update pan so the model follows the mouse (drag right -> model right, drag down -> model down)
                         m_pan.x += event.motion.xrel * worldPerPixelX;
                         m_pan.y -= event.motion.yrel * worldPerPixelY;
+                        m_cacheValid = false;
+                    }
+                    break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:
+                    if (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) {
+                        computeScreenCache();
                     }
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         int mx = event.button.x;
                         int my = event.button.y;
+                        if (!m_cacheValid) {
+                            computeScreenCache();
+                        }
                         pickPivot(mx, my);
                     }
                     break;
@@ -392,11 +403,13 @@ private:
                         float zoomDelta = event.wheel.y * m_zoom * 0.1f;
                         m_zoom -= zoomDelta;
                         m_zoom = glm::max(0.1f, m_zoom);
+                        m_cacheValid = false;
                     }
                     break;
                     
                 case SDL_EVENT_WINDOW_RESIZED:
                     glViewport(0, 0, event.window.data1, event.window.data2);
+                    m_cacheValid = false;
                     break;
             }
         }
@@ -464,6 +477,7 @@ private:
                 }
                 m_pan = glm::vec2(0.0f);
                 m_pivotActive = false;
+                m_cacheValid = false;
                 break;
             default:
                 // no-op
@@ -575,6 +589,9 @@ private:
 #else
     bool m_useOpenMP;
 #endif
+    // Cached screen-space vertex coordinates and validity flag
+    std::vector<glm::vec2> m_screenCache;
+    bool m_cacheValid;
     bool loadSTL(const std::string& path) {
         auto mesh = STLLoader::load(path);
         if (!mesh) {
@@ -647,10 +664,10 @@ private:
             modelOld = glm::rotate(modelOld, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
             modelOld = glm::translate(modelOld, -center);
         }
-
         const auto& verts = m_renderer.getMesh()->vertices;
         float bestDist2 = std::numeric_limits<float>::infinity();
         glm::vec3 bestPos(0.0f);
+        // Use cached screen positions
 #ifdef HAVE_OPENMP
         if (m_useOpenMP) {
             #pragma omp parallel
@@ -659,18 +676,13 @@ private:
                 glm::vec3 localPos(0.0f);
                 #pragma omp for nowait
                 for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
-                    const auto& v = verts[i];
-                    glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
-                    if (clip.w == 0.0f) continue;
-                    glm::vec3 ndc = glm::vec3(clip) / clip.w;
-                    float sx = (ndc.x * 0.5f + 0.5f) * width;
-                    float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
-                    float dx = sx - mouseX;
-                    float dy = sy - mouseY;
+                    const glm::vec2 sc = (i < (int)m_screenCache.size() ? m_screenCache[i] : glm::vec2(std::numeric_limits<float>::infinity()));
+                    float dx = sc.x - mouseX;
+                    float dy = sc.y - mouseY;
                     float d2 = dx*dx + dy*dy;
                     if (d2 < localBest) {
                         localBest = d2;
-                        localPos = v.position;
+                        localPos = verts[i].position;
                     }
                 }
                 #pragma omp critical
@@ -684,19 +696,14 @@ private:
         } else
 #endif
         {
-            for (const auto& v : verts) {
-                glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
-                if (clip.w == 0.0f) continue;
-                glm::vec3 ndc = glm::vec3(clip) / clip.w;
-                // Convert to screen coords (origin top-left)
-                float sx = (ndc.x * 0.5f + 0.5f) * width;
-                float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
-                float dx = sx - mouseX;
-                float dy = sy - mouseY;
+            for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
+                const glm::vec2 sc = (i < (int)m_screenCache.size() ? m_screenCache[i] : glm::vec2(std::numeric_limits<float>::infinity()));
+                float dx = sc.x - mouseX;
+                float dy = sc.y - mouseY;
                 float d2 = dx*dx + dy*dy;
                 if (d2 < bestDist2) {
                     bestDist2 = d2;
-                    bestPos = v.position; // model-space
+                    bestPos = verts[i].position; // model-space
                 }
             }
         }
@@ -752,6 +759,77 @@ private:
         m_pivotActive = true;
         double ms = (SDL_GetTicksNS() - t0) / 1.0e6;
         std::cout << "Pivot selected at model coords: (" << bestPos.x << ", " << bestPos.y << ", " << bestPos.z << ") in " << (int)ms << " ms" << std::endl;
+    }
+
+    void computeScreenCache() {
+        Uint64 t0 = SDL_GetTicksNS();
+        m_cacheValid = false;
+        m_screenCache.clear();
+        if (!m_renderer.getMesh()) return;
+        int width = 1, height = 1;
+        SDL_GetWindowSize(m_window, &width, &height);
+        float aspect = static_cast<float>(width) / static_cast<float>(height);
+        float orthoSize = m_zoom;
+        float maxExtent = m_renderer.getMesh() ? m_renderer.getMesh()->getMaxExtent() : 100.0f;
+        glm::mat4 projection = glm::ortho(
+            -orthoSize * aspect, orthoSize * aspect,
+            -orthoSize, orthoSize,
+            -maxExtent * 10.0f, maxExtent * 10.0f);
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(m_pan.x, m_pan.y, 0.0f));
+
+        glm::mat4 model = glm::mat4(1.0f);
+        if (m_renderer.getMesh()) {
+            glm::vec3 center = m_renderer.getMesh()->getCenter();
+            if (m_pivotActive) {
+                glm::vec3 pPrime = m_pivotModel - center;
+                model = glm::translate(model, pPrime);
+                model = glm::rotate(model, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::translate(model, -pPrime);
+                model = glm::translate(model, -center);
+            } else {
+                model = glm::rotate(model, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::translate(model, -center);
+            }
+        }
+
+        const auto& verts = m_renderer.getMesh()->vertices;
+        m_screenCache.resize(verts.size());
+#ifdef HAVE_OPENMP
+        if (m_useOpenMP) {
+            #pragma omp parallel for
+            for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
+                const auto& v = verts[i];
+                glm::vec4 clip = projection * view * model * glm::vec4(v.position, 1.0f);
+                if (clip.w == 0.0f) { m_screenCache[i] = glm::vec2(std::numeric_limits<float>::infinity()); continue; }
+                glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                float sx = (ndc.x * 0.5f + 0.5f) * width;
+                float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
+                m_screenCache[i] = glm::vec2(sx, sy);
+            }
+        } else
+#endif
+        {
+            for (size_t i = 0; i < verts.size(); ++i) {
+                const auto& v = verts[i];
+                glm::vec4 clip = projection * view * model * glm::vec4(v.position, 1.0f);
+                if (clip.w == 0.0f) { m_screenCache[i] = glm::vec2(std::numeric_limits<float>::infinity()); continue; }
+                glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                float sx = (ndc.x * 0.5f + 0.5f) * width;
+                float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
+                m_screenCache[i] = glm::vec2(sx, sy);
+            }
+        }
+        m_cacheValid = true;
+    double ms = (SDL_GetTicksNS() - t0) / 1.0e6;
+#ifdef HAVE_OPENMP
+    bool usedOMP = m_useOpenMP;
+#else
+    bool usedOMP = false;
+#endif
+    std::cout << "Screen cache refreshed in " << (int)ms << " ms for "
+          << verts.size() << " vertices" << (usedOMP ? " [OpenMP]" : "") << std::endl;
     }
 
     void drawPivotAxes(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
