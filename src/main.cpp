@@ -20,7 +20,13 @@ public:
                     m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
                     m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0),
                     m_pivotActive(false), m_pivotModel(0.0f),
-                    m_axesVAO(0), m_axesVBO(0), m_axesProgram(0), m_axisLength(0.0f) {}
+                    m_axesVAO(0), m_axesVBO(0), m_axesProgram(0), m_axisLength(0.0f)
+#ifdef HAVE_OPENMP
+                    , m_useOpenMP(true)
+#else
+                    , m_useOpenMP(false)
+#endif
+                    {}
     
     ~Application() {
         cleanup();
@@ -299,7 +305,9 @@ private:
             m_fps = m_frameCount * 1000000000.0f / elapsed;
             
             // Update window title with FPS
-            std::string title = "STL Viewer - FPS: " + std::to_string(static_cast<int>(m_fps));
+            size_t triCount = (m_renderer.getMesh() ? m_renderer.getMesh()->indices.size() / 3 : 0);
+            std::string title = "STL Viewer - FPS: " + std::to_string(static_cast<int>(m_fps)) +
+                                " | Tris: " + std::to_string(triCount);
             SDL_SetWindowTitle(m_window, title.c_str());
             
             m_frameCount = 0;
@@ -438,6 +446,14 @@ private:
                 std::cout << "S pressed - Switching to solid mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::SOLID);
                 break;
+            case SDL_SCANCODE_M:
+#ifdef HAVE_OPENMP
+                m_useOpenMP = !m_useOpenMP;
+                std::cout << "OpenMP parallel picking: " << (m_useOpenMP ? "ON" : "OFF") << std::endl;
+#else
+                std::cout << "OpenMP not available in this build" << std::endl;
+#endif
+                break;
             case SDL_SCANCODE_R:
                 std::cout << "R pressed - Resetting view" << std::endl;
                 m_rotationX = 30.0f;
@@ -553,6 +569,12 @@ private:
     GLuint m_axesVBO;
     GLuint m_axesProgram;
     float m_axisLength;
+    // Runtime toggle for OpenMP-based picking
+#ifdef HAVE_OPENMP
+    bool m_useOpenMP;
+#else
+    bool m_useOpenMP;
+#endif
     bool loadSTL(const std::string& path) {
         auto mesh = STLLoader::load(path);
         if (!mesh) {
@@ -597,6 +619,7 @@ private:
     }
 
     void pickPivot(int mouseX, int mouseY) {
+        Uint64 t0 = SDL_GetTicksNS();
         if (!m_renderer.getMesh()) return;
         int width = 1, height = 1;
         SDL_GetWindowSize(m_window, &width, &height);
@@ -628,19 +651,53 @@ private:
         const auto& verts = m_renderer.getMesh()->vertices;
         float bestDist2 = std::numeric_limits<float>::infinity();
         glm::vec3 bestPos(0.0f);
-        for (const auto& v : verts) {
-            glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
-            if (clip.w == 0.0f) continue;
-            glm::vec3 ndc = glm::vec3(clip) / clip.w;
-            // Convert to screen coords (origin top-left)
-            float sx = (ndc.x * 0.5f + 0.5f) * width;
-            float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
-            float dx = sx - mouseX;
-            float dy = sy - mouseY;
-            float d2 = dx*dx + dy*dy;
-            if (d2 < bestDist2) {
-                bestDist2 = d2;
-                bestPos = v.position; // model-space
+#ifdef HAVE_OPENMP
+        if (m_useOpenMP) {
+            #pragma omp parallel
+            {
+                float localBest = std::numeric_limits<float>::infinity();
+                glm::vec3 localPos(0.0f);
+                #pragma omp for nowait
+                for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
+                    const auto& v = verts[i];
+                    glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
+                    if (clip.w == 0.0f) continue;
+                    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                    float sx = (ndc.x * 0.5f + 0.5f) * width;
+                    float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
+                    float dx = sx - mouseX;
+                    float dy = sy - mouseY;
+                    float d2 = dx*dx + dy*dy;
+                    if (d2 < localBest) {
+                        localBest = d2;
+                        localPos = v.position;
+                    }
+                }
+                #pragma omp critical
+                {
+                    if (localBest < bestDist2) {
+                        bestDist2 = localBest;
+                        bestPos = localPos;
+                    }
+                }
+            }
+        } else
+#endif
+        {
+            for (const auto& v : verts) {
+                glm::vec4 clip = projection * view * modelOld * glm::vec4(v.position, 1.0f);
+                if (clip.w == 0.0f) continue;
+                glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                // Convert to screen coords (origin top-left)
+                float sx = (ndc.x * 0.5f + 0.5f) * width;
+                float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * height;
+                float dx = sx - mouseX;
+                float dy = sy - mouseY;
+                float d2 = dx*dx + dy*dy;
+                if (d2 < bestDist2) {
+                    bestDist2 = d2;
+                    bestPos = v.position; // model-space
+                }
             }
         }
         if (!(bestDist2 < std::numeric_limits<float>::infinity())) {
@@ -693,7 +750,8 @@ private:
         // Finally, set the pivot
         m_pivotModel = bestPos;
         m_pivotActive = true;
-        std::cout << "Pivot selected at model coords: (" << bestPos.x << ", " << bestPos.y << ", " << bestPos.z << ")" << std::endl;
+        double ms = (SDL_GetTicksNS() - t0) / 1.0e6;
+        std::cout << "Pivot selected at model coords: (" << bestPos.x << ", " << bestPos.y << ", " << bestPos.z << ") in " << (int)ms << " ms" << std::endl;
     }
 
     void drawPivotAxes(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
@@ -753,6 +811,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
+    std::cout << "  M: Toggle OpenMP picking" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;
     std::cout << "  S: Solid mode" << std::endl;
     std::cout << "  R: Reset view" << std::endl;

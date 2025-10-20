@@ -9,6 +9,7 @@ find_package(SDL3 CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(nfd CONFIG REQUIRED)
+find_package(OpenMP)
 
 # Source files
 set(SOURCES
@@ -39,6 +40,27 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_OPENMP)
+endif()
+
+# Fallback for AppleClang with Homebrew libomp on macOS
+if (APPLE AND NOT OpenMP_CXX_FOUND)
+    set(HOMEBREW_LIBOMP_PREFIX "/opt/homebrew/opt/libomp" CACHE PATH "Homebrew libomp prefix")
+    if (EXISTS "${HOMEBREW_LIBOMP_PREFIX}/include/omp.h")
+        message(STATUS "Using Homebrew libomp at ${HOMEBREW_LIBOMP_PREFIX}")
+        target_include_directories(${PROJECT_NAME} PRIVATE "${HOMEBREW_LIBOMP_PREFIX}/include")
+        target_link_directories(${PROJECT_NAME} PRIVATE "${HOMEBREW_LIBOMP_PREFIX}/lib")
+        target_link_libraries(${PROJECT_NAME} PRIVATE omp)
+        target_compile_options(${PROJECT_NAME} PRIVATE -Xpreprocessor -fopenmp)
+        target_link_options(${PROJECT_NAME} PRIVATE -Wl,-rpath,${HOMEBREW_LIBOMP_PREFIX}/lib)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_OPENMP)
+    else()
+        message(STATUS "OpenMP not found; to enable on macOS, install libomp via Homebrew and set HOMEBREW_LIBOMP_PREFIX if non-standard")
+    endif()
+endif()
 
 ## No native menus; rely on cross-platform shortcuts
 

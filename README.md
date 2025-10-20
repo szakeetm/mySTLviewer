@@ -82,6 +82,7 @@ mySTLViewer [stl_file]
 - **Mouse Wheel**: Zoom in/out
 - **Ctrl/Cmd + O**: Open file dialog (Load)
 - **Ctrl/Cmd + Q**: Quit application
+- **M**: Toggle OpenMP-based pivot picking (if enabled in the build)
 - **W**: Switch to wireframe mode
 - **S**: Switch to solid mode
 - **V**: Toggle VSync
@@ -117,6 +118,9 @@ The project uses the following libraries managed by vcpkg:
 - **SDL3**: Window management and input handling
 - **glad**: OpenGL function loader
 - **glm**: OpenGL Mathematics library for matrix operations
+- **nativefiledialog-extended (nfd)**: Native file open dialog on all platforms
+- **OpenMP (optional)**: Speeds up pivot picking by parallelizing the nearest-vertex search
+    - On macOS with AppleClang, install `libomp` via Homebrew; the build auto-detects and links it.
 
 ## Technical Details
 
@@ -160,6 +164,30 @@ Ensure your graphics drivers are up to date and support OpenGL 3.3 or higher. Th
 ### Shader compilation errors
 
 Check that the `shaders/` directory is copied to your build directory. CMake should handle this automatically.
+
+### Enable OpenMP (parallel pivot picking) on macOS
+
+AppleClang doesn’t ship OpenMP by default. This project can enable OpenMP via Homebrew’s `libomp` on Apple Silicon:
+
+1) Install libomp
+```bash
+brew install libomp
+```
+
+2) Configure the project (from the `build/` dir)
+```bash
+cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+```
+
+The build will try the standard OpenMP detection first. If that fails on macOS, it will fall back to Homebrew’s libomp at `/opt/homebrew/opt/libomp` automatically and define `HAVE_OPENMP`.
+
+If your Homebrew prefix is different, set it explicitly:
+```bash
+cmake .. -DHOMEBREW_LIBOMP_PREFIX=/custom/prefix/opt/libomp \
+         -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+```
+
+3) At runtime, press `M` to toggle OpenMP-based picking on/off.
 
 ## License
 
