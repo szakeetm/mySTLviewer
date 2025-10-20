@@ -80,6 +80,8 @@ mySTLViewer [stl_file]
 - **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
 - **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
+- **Ctrl/Cmd + O**: Open file dialog (Load)
+- **Ctrl/Cmd + Q**: Quit application
 - **W**: Switch to wireframe mode
 - **S**: Switch to solid mode
 - **V**: Toggle VSync
