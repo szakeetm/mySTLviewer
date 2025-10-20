@@ -314,8 +314,8 @@ private:
                     
                 case SDL_EVENT_MOUSE_MOTION:
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) {
-                        m_rotationY += event.motion.xrel * 0.5f;
-                        m_rotationX += event.motion.yrel * 0.5f;
+                        m_rotationY += event.motion.xrel * 0.25f;
+                        m_rotationX += event.motion.yrel * 0.25f;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
                     }
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) {
