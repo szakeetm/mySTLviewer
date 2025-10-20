@@ -23,6 +23,8 @@ public:
     }
     
     bool initialize(const std::string& stlFile) {
+        // On macOS, ensure this is a foreground app (not background-only)
+        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "0");
         // Initialize SDL
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
             std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
@@ -58,6 +60,16 @@ public:
         if (!SDL_StartTextInput(m_window)) { // enable text input events as a fallback
             std::cerr << "Warning: failed to start text input: " << SDL_GetError() << std::endl;
         }
+        // Give the OS a brief moment to grant keyboard focus to our window
+        for (int attempt = 0; attempt < 50; ++attempt) { // ~500ms total
+            Uint32 flags = SDL_GetWindowFlags(m_window);
+            if (flags & SDL_WINDOW_INPUT_FOCUS) {
+                break;
+            }
+            SDL_PumpEvents();
+            SDL_RaiseWindow(m_window);
+            SDL_Delay(10);
+        }
         
         // Create OpenGL context
         m_glContext = SDL_GL_CreateContext(m_window);
@@ -87,7 +99,10 @@ public:
     // Enable multisampling if available
     glEnable(GL_MULTISAMPLE);
         
-        // Enable back-face culling
+    // Disable dithering to avoid greyish tones on some drivers
+    glDisable(GL_DITHER);
+        
+    // Enable back-face culling
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         
@@ -343,6 +358,21 @@ private:
                 std::cout << "Q pressed - Quitting" << std::endl;
                 m_running = false;
                 break;
+            case SDL_SCANCODE_V: {
+                // Toggle VSync at runtime (SDL3: get uses out-param, set returns bool)
+                int current = 0;
+                if (!SDL_GL_GetSwapInterval(&current)) {
+                    std::cerr << "Failed to get current VSync state: " << SDL_GetError() << std::endl;
+                    break;
+                }
+                int desired = (current == 0) ? 1 : 0; // 0=off, 1=on
+                if (SDL_GL_SetSwapInterval(desired)) {
+                    std::cout << "VSync " << (desired ? "enabled" : "disabled") << std::endl;
+                } else {
+                    std::cerr << "Failed to toggle VSync: " << SDL_GetError() << std::endl;
+                }
+                break;
+            }
             case SDL_SCANCODE_W:
                 std::cout << "W pressed - Switching to wireframe mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::WIREFRAME);
@@ -455,6 +485,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  Left Mouse + Drag: Rotate model" << std::endl;
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
+    std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;
     std::cout << "  S: Solid mode" << std::endl;
     std::cout << "  R: Reset view" << std::endl;

@@ -5,14 +5,15 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Renderer::Renderer()
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_shaderProgram(0), m_renderMode(RenderMode::WIREFRAME) {
+    : m_VAO(0), m_VBO(0), m_EBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME) {
 }
 
 Renderer::~Renderer() {
     if (m_VAO) glDeleteVertexArrays(1, &m_VAO);
     if (m_VBO) glDeleteBuffers(1, &m_VBO);
     if (m_EBO) glDeleteBuffers(1, &m_EBO);
-    if (m_shaderProgram) glDeleteProgram(m_shaderProgram);
+    if (m_shaderProgramSolid) glDeleteProgram(m_shaderProgramSolid);
+    if (m_shaderProgramWireframe) glDeleteProgram(m_shaderProgramWireframe);
 }
 
 bool Renderer::initialize() {
@@ -72,31 +73,40 @@ void Renderer::setupMesh() {
 }
 
 void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
-    if (!m_mesh || m_mesh->vertices.empty() || !m_shaderProgram) {
+    if (!m_mesh || m_mesh->vertices.empty()) {
         return;
     }
     
-    glUseProgram(m_shaderProgram);
+    // Choose shader program based on mode
+    GLuint program = (m_renderMode == RenderMode::WIREFRAME) ? m_shaderProgramWireframe : m_shaderProgramSolid;
+    if (!program) return;
+    glUseProgram(program);
     
     // Set uniforms
-    GLint projLoc = glGetUniformLocation(m_shaderProgram, "projection");
-    GLint viewLoc = glGetUniformLocation(m_shaderProgram, "view");
-    GLint modelLoc = glGetUniformLocation(m_shaderProgram, "model");
-    GLint modeLoc = glGetUniformLocation(m_shaderProgram, "renderMode");
+    GLint projLoc = glGetUniformLocation(program, "projection");
+    GLint viewLoc = glGetUniformLocation(program, "view");
+    GLint modelLoc = glGetUniformLocation(program, "model");
     
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniform1i(modeLoc, m_renderMode == RenderMode::WIREFRAME ? 1 : 0);
     
-    // Set render mode
+    // Set render mode and related state
     if (m_renderMode == RenderMode::WIREFRAME) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glEnable(GL_LINE_SMOOTH);
+        // Rely on MSAA for anti-aliasing; GL_LINE_SMOOTH can cause dimming on macOS
+        glDisable(GL_LINE_SMOOTH);
         glLineWidth(1.5f);
+        // Use opaque lines; blending can dim appearance on macOS
+        glDisable(GL_BLEND);
+        // Show all edges
+        glDisable(GL_CULL_FACE);
     } else {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glDisable(GL_LINE_SMOOTH);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
     }
     
     // Draw
@@ -104,7 +114,7 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     glDrawElements(GL_TRIANGLES, m_mesh->indices.size(), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
     
-    // Reset polygon mode
+    // Reset polygon mode (keep other state as set for the next frame)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
@@ -113,37 +123,44 @@ void Renderer::setRenderMode(RenderMode mode) {
 }
 
 bool Renderer::loadShaders() {
-    // Read shader files
+    // Load solid shaders from files
     std::ifstream vShaderFile("shaders/vertex.glsl");
     std::ifstream fShaderFile("shaders/fragment.glsl");
-    
     if (!vShaderFile.is_open() || !fShaderFile.is_open()) {
         std::cerr << "Failed to open shader files" << std::endl;
         return false;
     }
-    
     std::stringstream vShaderStream, fShaderStream;
     vShaderStream << vShaderFile.rdbuf();
     fShaderStream << fShaderFile.rdbuf();
-    
     std::string vertexCode = vShaderStream.str();
     std::string fragmentCode = fShaderStream.str();
-    
-    // Compile shaders
-    GLuint vertexShader = compileShader(vertexCode, GL_VERTEX_SHADER);
-    GLuint fragmentShader = compileShader(fragmentCode, GL_FRAGMENT_SHADER);
-    
-    if (!vertexShader || !fragmentShader) {
-        return false;
-    }
-    
-    // Link program
-    m_shaderProgram = linkProgram(vertexShader, fragmentShader);
-    
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-    
-    return m_shaderProgram != 0;
+
+    GLuint vSolid = compileShader(vertexCode, GL_VERTEX_SHADER);
+    GLuint fSolid = compileShader(fragmentCode, GL_FRAGMENT_SHADER);
+    if (!vSolid || !fSolid) return false;
+    m_shaderProgramSolid = linkProgram(vSolid, fSolid);
+    glDeleteShader(vSolid);
+    glDeleteShader(fSolid);
+    if (!m_shaderProgramSolid) return false;
+
+    // Create a minimal wireframe fragment shader (pure white) using the same vertex shader
+    const char* wireFrag = R"(
+        #version 330 core
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        }
+    )";
+    GLuint vWire = compileShader(vertexCode, GL_VERTEX_SHADER);
+    GLuint fWire = compileShader(std::string(wireFrag), GL_FRAGMENT_SHADER);
+    if (!vWire || !fWire) return false;
+    m_shaderProgramWireframe = linkProgram(vWire, fWire);
+    glDeleteShader(vWire);
+    glDeleteShader(fWire);
+    if (!m_shaderProgramWireframe) return false;
+
+    return true;
 }
 
 GLuint Renderer::compileShader(const std::string& source, GLenum type) {
