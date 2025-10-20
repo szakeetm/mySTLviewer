@@ -51,7 +51,8 @@ public:
             return false;
         }
         
-    // Raise window and give it input focus
+        // Show and raise window to bring it to the front (important on macOS)
+        SDL_ShowWindow(m_window);
         SDL_RaiseWindow(m_window);
         SDL_SetWindowKeyboardGrab(m_window, false);
         if (!SDL_StartTextInput(m_window)) { // enable text input events as a fallback
@@ -93,7 +94,7 @@ public:
         // Set clear color to black (gradient will cover it)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         
-        // Initialize background gradient
+    // Initialize background gradient
         initBackgroundGradient();
         
         // Initialize renderer
@@ -102,9 +103,35 @@ public:
             return false;
         }
         
+        // If no file path was provided, open file dialog AFTER window is active
+        std::string selectedFile = stlFile;
+        if (selectedFile.empty()) {
+            if (!NFD_Init()) {
+                std::cerr << "Error initializing file dialog: " << NFD_GetError() << std::endl;
+                return false;
+            }
+            nfdchar_t* outPath = nullptr;
+            nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
+            nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
+            if (result == NFD_OKAY) {
+                selectedFile = outPath;
+                std::cout << "Selected file: " << selectedFile << std::endl;
+                NFD_FreePath(outPath);
+            } else if (result == NFD_CANCEL) {
+                std::cout << "User cancelled file selection" << std::endl;
+                NFD_Quit();
+                return false; // treat cancel as a clean exit by caller
+            } else {
+                std::cerr << "Error opening file dialog: " << NFD_GetError() << std::endl;
+                NFD_Quit();
+                return false;
+            }
+            NFD_Quit();
+        }
+
         // Load STL file
-        if (!stlFile.empty()) {
-            auto mesh = STLLoader::load(stlFile);
+        if (!selectedFile.empty()) {
+            auto mesh = STLLoader::load(selectedFile);
             if (mesh) {
                 m_renderer.setMesh(std::move(mesh));
                 
@@ -114,7 +141,7 @@ public:
                     m_zoom = extent * 1.5f;
                 }
             } else {
-                std::cerr << "Failed to load STL file: " << stlFile << std::endl;
+                std::cerr << "Failed to load STL file: " << selectedFile << std::endl;
                 return false;
             }
         }
@@ -419,32 +446,7 @@ private:
 
 int main(int argc, char* argv[]) {
     std::string stlFile;
-    
-    // If no command line argument, open file dialog
-    if (argc < 2) {
-        // Initialize NFD
-        NFD_Init();
-        
-        nfdchar_t* outPath = nullptr;
-        nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
-        nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
-        
-        if (result == NFD_OKAY) {
-            stlFile = outPath;
-            NFD_FreePath(outPath);
-            std::cout << "Selected file: " << stlFile << std::endl;
-        } else if (result == NFD_CANCEL) {
-            std::cout << "User cancelled file selection" << std::endl;
-            NFD_Quit();
-            return 0;
-        } else {
-            std::cerr << "Error opening file dialog: " << NFD_GetError() << std::endl;
-            NFD_Quit();
-            return 1;
-        }
-        
-        NFD_Quit();
-    } else {
+    if (argc >= 2) {
         stlFile = argv[1];
     }
     
@@ -461,6 +463,10 @@ int main(int argc, char* argv[]) {
     Application app;
     
     if (!app.initialize(stlFile)) {
+        // If user cancelled the file dialog, treat it as a normal exit
+        if (argc < 2) {
+            return 0;
+        }
         std::cerr << "Failed to initialize application" << std::endl;
         return 1;
     }
