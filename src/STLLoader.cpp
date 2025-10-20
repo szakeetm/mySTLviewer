@@ -2,7 +2,22 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <cstring>
+
+// Simple console progress bar
+static void printProgressBar(const std::string& prefix, float fraction) {
+    if (fraction < 0.0f) fraction = 0.0f;
+    if (fraction > 1.0f) fraction = 1.0f;
+    const int width = 40; // progress bar width in chars
+    int pos = static_cast<int>(fraction * width + 0.5f);
+    std::cout << "\r" << prefix << " [";
+    for (int i = 0; i < width; ++i) {
+        std::cout << (i < pos ? '=' : ' ');
+    }
+    std::cout << "] " << std::fixed << std::setprecision(1) << (fraction * 100.0f) << "%";
+    std::cout.flush();
+}
 
 std::unique_ptr<Mesh> STLLoader::load(const std::string& filename) {
     if (isBinarySTL(filename)) {
@@ -63,6 +78,12 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
     mesh->vertices.reserve(numTriangles * 3);
     mesh->indices.reserve(numTriangles * 3);
     
+    // Progress tracking
+    uint32_t lastPercent = 0;
+    if (numTriangles == 0) {
+        printProgressBar("Reading triangles", 1.0f);
+    }
+
     for (uint32_t i = 0; i < numTriangles; ++i) {
         // Read normal
         float normal[3];
@@ -84,10 +105,17 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
         
         // Skip attribute byte count
         file.seekg(2, std::ios::cur);
+
+        // Update progress bar only when percentage changes (max 100 prints)
+        uint32_t percent = numTriangles ? static_cast<uint32_t>(((i + 1) * 100ULL) / numTriangles) : 100;
+        if (percent != lastPercent) {
+            lastPercent = percent;
+            printProgressBar("Reading triangles", percent / 100.0f);
+        }
     }
     
     mesh->calculateBounds();
-    std::cout << "Loaded " << mesh->vertices.size() << " vertices" << std::endl;
+    std::cout << "\nLoaded " << mesh->vertices.size() << " vertices" << std::endl;
     
     return mesh;
 }
@@ -105,6 +133,16 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename) {
     std::vector<glm::vec3> currentTriangle;
     
     std::cout << "Loading ASCII STL..." << std::endl;
+    
+    // Determine total file size (bytes) for progress estimation
+    std::ifstream fsize(filename, std::ios::binary);
+    std::streampos totalBytes = 0;
+    if (fsize.is_open()) {
+        fsize.seekg(0, std::ios::end);
+        totalBytes = fsize.tellg();
+    }
+    std::streampos approxRead = 0;
+    uint32_t lastPercent = 0;
     
     while (std::getline(file, line)) {
         std::istringstream iss(line);
@@ -138,10 +176,24 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename) {
                 mesh->indices.push_back(baseIndex + 2);
             }
         }
+        // Progress update by file position when available, else by approximate bytes
+        std::streampos pos = file.tellg();
+        if (pos == std::streampos(-1)) {
+            approxRead += static_cast<std::streampos>(line.size() + 1);
+            pos = approxRead;
+        }
+        if (totalBytes > 0) {
+            uint32_t percent = static_cast<uint32_t>((static_cast<long double>(pos) * 100.0L) / static_cast<long double>(totalBytes));
+            if (percent > 100) percent = 100;
+            if (percent != lastPercent) {
+                lastPercent = percent;
+                printProgressBar("Reading file", percent / 100.0f);
+            }
+        }
     }
     
     mesh->calculateBounds();
-    std::cout << "Loaded " << mesh->vertices.size() << " vertices" << std::endl;
+    std::cout << "\nLoaded " << mesh->vertices.size() << " vertices" << std::endl;
     
     return mesh;
 }
