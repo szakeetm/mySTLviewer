@@ -1,8 +1,8 @@
 # mySTLViewer
 
-![Solid rendering example](screenshots/solid.png)
-
 A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 3.3+.
+
+![Solid rendering example](screenshots/solid.png)
 
 ## Features
 
