@@ -14,6 +14,7 @@ class Application {
 public:
     Application() : m_window(nullptr), m_glContext(nullptr), m_running(false), 
                     m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f),
+                    m_pan(0.0f, 0.0f),
                     m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
                     m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0) {}
     
@@ -261,6 +262,7 @@ private:
                                     float extent = m_renderer.getMesh()->getMaxExtent();
                                     m_zoom = extent * 1.5f;
                                 }
+                                m_pan = glm::vec2(0.0f);
                                 break;
                             default:
                                 break;
@@ -273,6 +275,18 @@ private:
                         m_rotationY += event.motion.xrel * 0.5f;
                         m_rotationX += event.motion.yrel * 0.5f;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
+                    }
+                    if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) {
+                        int width = 1, height = 1;
+                        SDL_GetWindowSize(m_window, &width, &height);
+                        float aspect = (float)width / (float)height;
+                        float orthoSize = m_zoom;
+                        // Convert pixel delta to world units based on ortho projection
+                        float worldPerPixelY = (2.0f * orthoSize) / (float)height;
+                        float worldPerPixelX = (2.0f * orthoSize * aspect) / (float)width;
+                        // Update pan so the model follows the mouse (drag right -> model right, drag down -> model down)
+                        m_pan.x += event.motion.xrel * worldPerPixelX;
+                        m_pan.y -= event.motion.yrel * worldPerPixelY;
                     }
                     break;
                     
@@ -318,6 +332,7 @@ private:
                     float extent = m_renderer.getMesh()->getMaxExtent();
                     m_zoom = extent * 1.5f;
                 }
+                m_pan = glm::vec2(0.0f);
                 break;
             default:
                 // no-op
@@ -344,8 +359,8 @@ private:
             -maxExtent * 10.0f, maxExtent * 10.0f  // Much larger near/far planes
         );
         
-        // View matrix (identity - no camera movement needed for ortho)
-        glm::mat4 view = glm::mat4(1.0f);
+    // View matrix with panning in XY (ortho)
+    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(m_pan.x, m_pan.y, 0.0f));
         
         // Model matrix (rotation and centering)
         glm::mat4 model = glm::mat4(1.0f);
@@ -389,6 +404,7 @@ private:
     float m_rotationX;
     float m_rotationY;
     float m_zoom;
+    glm::vec2 m_pan;
     
     // FPS tracking
     Uint32 m_frameCount;
@@ -435,6 +451,7 @@ int main(int argc, char* argv[]) {
     // Display controls
     std::cout << "\nControls:" << std::endl;
     std::cout << "  Left Mouse + Drag: Rotate model" << std::endl;
+    std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;
     std::cout << "  S: Solid mode" << std::endl;
