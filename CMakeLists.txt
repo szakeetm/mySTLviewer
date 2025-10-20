@@ -23,6 +23,7 @@ set(HEADERS
     src/Mesh.h
 )
 
+
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -38,6 +39,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+## No native menus; rely on cross-platform shortcuts
 
 # Copy shaders to build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders

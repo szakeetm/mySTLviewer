@@ -127,6 +127,7 @@ public:
         initBackgroundGradient();
         // Initialize axes renderer
         initAxesRenderer();
+
         
         // Initialize renderer
         if (!m_renderer.initialize()) {
@@ -135,47 +136,10 @@ public:
         }
         
         // If no file path was provided, open file dialog AFTER window is active
-        std::string selectedFile = stlFile;
-        if (selectedFile.empty()) {
-            if (!NFD_Init()) {
-                std::cerr << "Error initializing file dialog: " << NFD_GetError() << std::endl;
-                return false;
-            }
-            nfdchar_t* outPath = nullptr;
-            nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
-            nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
-            if (result == NFD_OKAY) {
-                selectedFile = outPath;
-                std::cout << "Selected file: " << selectedFile << std::endl;
-                NFD_FreePath(outPath);
-            } else if (result == NFD_CANCEL) {
-                std::cout << "User cancelled file selection" << std::endl;
-                NFD_Quit();
-                return false; // treat cancel as a clean exit by caller
-            } else {
-                std::cerr << "Error opening file dialog: " << NFD_GetError() << std::endl;
-                NFD_Quit();
-                return false;
-            }
-            NFD_Quit();
-        }
-
-        // Load STL file
-        if (!selectedFile.empty()) {
-            auto mesh = STLLoader::load(selectedFile);
-            if (mesh) {
-                m_renderer.setMesh(std::move(mesh));
-                
-                // Adjust zoom based on model size
-                if (m_renderer.getMesh()) {
-                    float extent = m_renderer.getMesh()->getMaxExtent();
-                    m_zoom = extent * 1.5f;
-                    m_axisLength = extent * 0.1f; // size of pivot axes
-                }
-            } else {
-                std::cerr << "Failed to load STL file: " << selectedFile << std::endl;
-                return false;
-            }
+        if (!stlFile.empty()) {
+            if (!loadSTL(stlFile)) return false;
+        } else {
+            if (!openFileDialogAndLoad(true)) return false; // required on startup
         }
         
         return true;
@@ -430,15 +394,26 @@ private:
         }
     }
     
-    void handleKeyPress(SDL_Scancode scancode, SDL_Keymod /*mod*/) {
+    void handleKeyPress(SDL_Scancode scancode, SDL_Keymod mod) {
         switch (scancode) {
             case SDL_SCANCODE_ESCAPE:
                 std::cout << "ESC pressed - Quitting" << std::endl;
                 m_running = false;
                 break;
             case SDL_SCANCODE_Q:
-                std::cout << "Q pressed - Quitting" << std::endl;
-                m_running = false;
+                if (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) {
+                    std::cout << "Ctrl/Cmd+Q pressed - Quitting" << std::endl;
+                    m_running = false;
+                } else {
+                    std::cout << "Q pressed - Quitting" << std::endl;
+                    m_running = false;
+                }
+                break;
+            case SDL_SCANCODE_O:
+                if (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) {
+                    std::cout << "Ctrl/Cmd+O pressed - Open file dialog" << std::endl;
+                    openFileDialogAndLoad(false);
+                }
                 break;
             case SDL_SCANCODE_V: {
                 // Toggle VSync at runtime (SDL3: get uses out-param, set returns bool)
@@ -578,6 +553,48 @@ private:
     GLuint m_axesVBO;
     GLuint m_axesProgram;
     float m_axisLength;
+    bool loadSTL(const std::string& path) {
+        auto mesh = STLLoader::load(path);
+        if (!mesh) {
+            std::cerr << "Failed to load STL file: " << path << std::endl;
+            return false;
+        }
+        m_renderer.setMesh(std::move(mesh));
+        if (m_renderer.getMesh()) {
+            float extent = m_renderer.getMesh()->getMaxExtent();
+            m_zoom = extent * 1.5f;
+            m_axisLength = extent * 0.1f;
+            m_pivotActive = false; // reset pivot on new load
+        }
+        return true;
+    }
+
+    bool openFileDialogAndLoad(bool required) {
+        if (!NFD_Init()) {
+            std::cerr << "Error initializing file dialog: " << NFD_GetError() << std::endl;
+            return false;
+        }
+        nfdchar_t* outPath = nullptr;
+        nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
+        nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
+        if (result == NFD_OKAY) {
+            std::string selectedFile = outPath;
+            NFD_FreePath(outPath);
+            NFD_Quit();
+            return loadSTL(selectedFile);
+        } else if (result == NFD_CANCEL) {
+            NFD_Quit();
+            if (required) {
+                std::cout << "User cancelled file selection" << std::endl;
+                return false;
+            }
+            return true; // not required; ignore
+        } else {
+            std::cerr << "Error opening file dialog: " << NFD_GetError() << std::endl;
+            NFD_Quit();
+            return false;
+        }
+    }
 
     void pickPivot(int mouseX, int mouseY) {
         if (!m_renderer.getMesh()) return;
