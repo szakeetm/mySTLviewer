@@ -80,6 +80,12 @@ mySTLViewer [stl_file]
 - **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
 - **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
+
+#### Trackpad Alternatives
+- **Z + Left Mouse Drag**: Zoom in/out (alternative to mouse wheel)
+- **D + Left Mouse Drag**: Pan the view (alternative to middle mouse)
+
+#### Other Controls
 - **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
 - **Ctrl/Cmd + O**: Open file dialog (Load)
 - **Ctrl/Cmd + Q**: Quit application

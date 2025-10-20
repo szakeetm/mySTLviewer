@@ -35,7 +35,12 @@ public:
                     , m_rotVelY(0.0f)
                     , m_zoomVel(0.0f)
                     , m_lastUpdateNS(0)
-                    , m_lastDragMotionNS(0) {}
+                    , m_lastDragMotionNS(0)
+                    , m_isZKeyPressed(false)
+                    , m_isDKeyPressed(false)
+                    , m_isLeftDragging(false)
+                    , m_lastMouseX(0)
+                    , m_lastMouseY(0) {}
     
     ~Application() {
         cleanup();
@@ -341,7 +346,13 @@ private:
                 case SDL_EVENT_KEY_DOWN:
                     // Use scancodes for robust key handling across layouts
                     handleKeyPress(event.key.scancode, event.key.mod);
+                    handleKeyState(event.key.scancode, true);
                     break;
+                    
+                case SDL_EVENT_KEY_UP:
+                    handleKeyState(event.key.scancode, false);
+                    break;
+                    
                 case SDL_EVENT_TEXT_INPUT:
                     if (event.text.text && event.text.text[0] != '\0') {
                         char c = event.text.text[0];
@@ -376,6 +387,7 @@ private:
                     break;
                     
                 case SDL_EVENT_MOUSE_MOTION:
+                    // Handle right mouse button rotation
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
                         float dxAngle = event.motion.xrel * 0.25f;
                         float dyAngle = event.motion.yrel * 0.25f;
@@ -396,6 +408,7 @@ private:
                             m_lastDragMotionNS = nowNS;
                         }
                     }
+                    // Handle middle mouse button panning
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) {
                         int width = 1, height = 1;
                         SDL_GetWindowSize(m_window, &width, &height);
@@ -409,6 +422,35 @@ private:
                         m_pan.y -= event.motion.yrel * worldPerPixelY;
                         m_cacheValid = false;
                     }
+                    // Handle trackpad alternatives with left mouse button
+                    if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_LEFT) && m_isLeftDragging) {
+                        if (m_isZKeyPressed) {
+                            // Z + left drag = zoom (similar to mouse wheel)
+                            // Convert mouse movement to scroll wheel equivalent: negative yrel = zoom in
+                            float scrollEquivalent = -event.motion.yrel * 0.1f; // Convert pixels to scroll units
+                            float zoomDelta = scrollEquivalent * m_zoom * 0.1f; // Same formula as mouse wheel
+                            m_zoom -= zoomDelta; // Same operation as mouse wheel
+                            m_zoom = glm::max(0.1f, m_zoom);
+                            m_cacheValid = false;
+                            if (m_kineticEnabled) {
+                                // Add an inertial impulse proportional to zoom scale (units/sec)
+                                m_zoomVel += scrollEquivalent * (m_zoom * 0.6f);
+                            }
+                        } else if (m_isDKeyPressed) {
+                            // D + left drag = pan (similar to middle mouse)
+                            int width = 1, height = 1;
+                            SDL_GetWindowSize(m_window, &width, &height);
+                            float aspect = (float)width / (float)height;
+                            float orthoSize = m_zoom;
+                            // Convert pixel delta to world units based on ortho projection
+                            float worldPerPixelY = (2.0f * orthoSize) / (float)height;
+                            float worldPerPixelX = (2.0f * orthoSize * aspect) / (float)width;
+                            // Update pan so the model follows the mouse
+                            m_pan.x += event.motion.xrel * worldPerPixelX;
+                            m_pan.y -= event.motion.yrel * worldPerPixelY;
+                            m_cacheValid = false;
+                        }
+                    }
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_UP:
                     if (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) {
@@ -419,15 +461,27 @@ private:
                         m_isRightDragging = false;
                         m_lastDragMotionNS = 0;
                     }
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        m_isLeftDragging = false;
+                        // Recompute screen cache if we were using trackpad controls
+                        if (m_isZKeyPressed || m_isDKeyPressed) {
+                            computeScreenCache();
+                        }
+                    }
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     if (event.button.button == SDL_BUTTON_LEFT) {
-                        int mx = event.button.x;
-                        int my = event.button.y;
-                        if (!m_cacheValid) {
-                            computeScreenCache();
+                        m_isLeftDragging = true;
+                        m_lastMouseX = event.button.x;
+                        m_lastMouseY = event.button.y;
+                        
+                        // If we're not in trackpad mode (Z or D not pressed), do pivot selection
+                        if (!m_isZKeyPressed && !m_isDKeyPressed) {
+                            if (!m_cacheValid) {
+                                computeScreenCache();
+                            }
+                            pickPivot(m_lastMouseX, m_lastMouseY);
                         }
-                        pickPivot(mx, my);
                     }
                     if (event.button.button == SDL_BUTTON_RIGHT) {
                         m_isRightDragging = true;
@@ -528,6 +582,19 @@ private:
                 break;
             default:
                 // no-op
+                break;
+        }
+    }
+
+    void handleKeyState(SDL_Scancode scancode, bool pressed) {
+        switch (scancode) {
+            case SDL_SCANCODE_Z:
+                m_isZKeyPressed = pressed;
+                break;
+            case SDL_SCANCODE_D:
+                m_isDKeyPressed = pressed;
+                break;
+            default:
                 break;
         }
     }
@@ -679,6 +746,13 @@ private:
     float m_zoomVel;         // zoom units/sec
     Uint64 m_lastUpdateNS;   // last integration timestamp
     Uint64 m_lastDragMotionNS; // last motion timestamp during drag
+
+    // Alternative trackpad controls
+    bool m_isZKeyPressed;    // Z key for zoom mode
+    bool m_isDKeyPressed;    // D key for pan mode  
+    bool m_isLeftDragging;   // left mouse dragging state
+    int m_lastMouseX;        // previous mouse X position
+    int m_lastMouseY;        // previous mouse Y position
 
     // Kinetic tuning constants
     static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
@@ -984,6 +1058,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  Left Mouse: Pick pivot (draw axes)" << std::endl;
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "Trackpad alternatives:" << std::endl;
+    std::cout << "  Z + Left Drag: Zoom in/out" << std::endl;
+    std::cout << "  D + Left Drag: Pan view" << std::endl;
+    std::cout << "" << std::endl;
     std::cout << "  K: Toggle kinetic rotate/zoom (inertia; no pan)" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
