@@ -9,6 +9,7 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 - **Dual Render Modes**: Switch between solid and wireframe rendering
 - **Orthogonal Projection**: Clean orthographic view of 3D models
 - **Interactive Controls**: Mouse-based rotation, pan, and zoom
+- **Startup File Dialog**: Native file chooser on launch (argument optional)
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
 
 ## Prerequisites
@@ -55,16 +56,21 @@ cmake --build .
 ### 4. Run the application
 
 ```bash
-./mySTLViewer /path/to/your/model.stl
+./mySTLViewer
 ```
+
+On startup, a native file dialog will prompt you to select an STL file. You can also pass a file path as a command-line argument to skip the dialog.
 
 ## Usage
 
 ### Command Line
 
 ```bash
-mySTLViewer <stl_file>
+mySTLViewer [stl_file]
 ```
+
+- If `[stl_file]` is provided, the viewer opens it directly.
+- If omitted, a native file dialog appears to select an STL file.
 
 ### Controls
 

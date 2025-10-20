@@ -20,22 +20,22 @@ void main()
     vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
     vec3 norm = normalize(Normal);
     
-    // Ambient lighting
-    float ambientStrength = 0.3;
+    // Ambient lighting (slightly higher for brighter base)
+    float ambientStrength = 0.45;
     vec3 ambient = ambientStrength * vec3(1.0);
     
     // Diffuse lighting
     float diff = max(dot(norm, lightDir), 0.0);
     vec3 diffuse = diff * vec3(1.0);
     
-    // Specular lighting for more material feel
+    // Specular lighting for more material feel (a touch stronger)
     vec3 viewDir = normalize(-WorldPos);
     vec3 reflectDir = reflect(-lightDir, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-    vec3 specular = 0.3 * spec * vec3(1.0);
+    vec3 specular = 0.45 * spec * vec3(1.0);
     
-    // Grey material color
-    vec3 objectColor = vec3(0.5, 0.5, 0.5);
+    // Brighter grey material color
+    vec3 objectColor = vec3(0.75, 0.75, 0.75);
     
     vec3 result = (ambient + diffuse + specular) * objectColor;
     FragColor = vec4(result, 1.0);

@@ -190,11 +190,11 @@ private:
     void initBackgroundGradient() {
         // Fullscreen quad vertices (positions + colors)
         float vertices[] = {
-            // positions        // colors (dark blue at top, black at bottom)
-            -1.0f,  1.0f, 0.0f,  0.0f, 0.05f, 0.15f,  // top-left
-             1.0f,  1.0f, 0.0f,  0.0f, 0.05f, 0.15f,  // top-right
-            -1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 0.0f,    // bottom-left
-             1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 0.0f     // bottom-right
+            // positions        // colors (lighter blue at top, black at bottom)
+            -1.0f,  1.0f, 0.0f,  0.3f, 0.5f, 0.7f, // top-left (lighter blue)
+             1.0f,  1.0f, 0.0f,  0.3f, 0.5f, 0.7f, // top-right (lighter blue)
+            -1.0f, -1.0f, 0.0f,  0.0f,  0.0f,  0.0f,  // bottom-left
+             1.0f, -1.0f, 0.0f,  0.0f,  0.0f,  0.0f   // bottom-right
         };
         
         glGenVertexArrays(1, &m_bgVAO);
@@ -253,12 +253,21 @@ private:
     }
     
     void renderBackground() {
+        // Ensure background renders regardless of current GL state
+        GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
+        GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE); // Don't write to depth buffer
+
         glUseProgram(m_bgShaderProgram);
         glBindVertexArray(m_bgVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
+
         glDepthMask(GL_TRUE); // Re-enable depth writing
+        if (wasDepth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+        if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     }
     
     void updateFPS() {
