@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include <cmath>
 #include "STLLoader.h"
 #include "Renderer.h"
 
@@ -27,7 +28,14 @@ public:
 #else
                     , m_useOpenMP(false)
 #endif
-                    , m_cacheValid(false) {}
+                    , m_cacheValid(false)
+                    , m_kineticEnabled(false)
+                    , m_isRightDragging(false)
+                    , m_rotVelX(0.0f)
+                    , m_rotVelY(0.0f)
+                    , m_zoomVel(0.0f)
+                    , m_lastUpdateNS(0)
+                    , m_lastDragMotionNS(0) {}
     
     ~Application() {
         cleanup();
@@ -155,10 +163,17 @@ public:
     void run() {
         m_running = true;
         m_lastFpsTime = SDL_GetTicksNS();
+        m_lastUpdateNS = m_lastFpsTime;
         m_frameCount = 0;
         
         while (m_running) {
             handleEvents();
+            // Kinetic update (rotation + zoom; pan is not affected)
+            Uint64 nowNS = SDL_GetTicksNS();
+            float dt = static_cast<float>(nowNS - m_lastUpdateNS) / 1.0e9f;
+            if (dt > 0.1f) dt = 0.1f; // clamp long pauses
+            if (dt > 0.0f) updateKinetics(dt);
+            m_lastUpdateNS = nowNS;
             render();
             updateFPS();
         }
@@ -362,10 +377,24 @@ private:
                     
                 case SDL_EVENT_MOUSE_MOTION:
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
-                        m_rotationY += event.motion.xrel * 0.25f;
-                        m_rotationX += event.motion.yrel * 0.25f;
+                        float dxAngle = event.motion.xrel * 0.25f;
+                        float dyAngle = event.motion.yrel * 0.25f;
+                        m_rotationY += dxAngle;
+                        m_rotationX += dyAngle;
                         m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
                         m_cacheValid = false;
+                        if (m_kineticEnabled) {
+                            m_isRightDragging = true;
+                            Uint64 nowNS = SDL_GetTicksNS();
+                            if (m_lastDragMotionNS == 0) m_lastDragMotionNS = nowNS;
+                            float dtd = static_cast<float>(nowNS - m_lastDragMotionNS) / 1.0e9f;
+                            if (dtd > 0.0f && dtd < 0.05f) {
+                                // deg/sec velocities
+                                m_rotVelX = dyAngle / dtd;
+                                m_rotVelY = dxAngle / dtd;
+                            }
+                            m_lastDragMotionNS = nowNS;
+                        }
                     }
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE)) {
                         int width = 1, height = 1;
@@ -385,6 +414,11 @@ private:
                     if (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) {
                         computeScreenCache();
                     }
+                    if (event.button.button == SDL_BUTTON_RIGHT) {
+                        // End rotation drag; inertia will continue if enabled
+                        m_isRightDragging = false;
+                        m_lastDragMotionNS = 0;
+                    }
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     if (event.button.button == SDL_BUTTON_LEFT) {
@@ -395,6 +429,11 @@ private:
                         }
                         pickPivot(mx, my);
                     }
+                    if (event.button.button == SDL_BUTTON_RIGHT) {
+                        m_isRightDragging = true;
+                        m_rotVelX = m_rotVelY = 0.0f; // will accumulate during motion
+                        m_lastDragMotionNS = SDL_GetTicksNS();
+                    }
                     break;
                     
                 case SDL_EVENT_MOUSE_WHEEL:
@@ -404,6 +443,10 @@ private:
                         m_zoom -= zoomDelta;
                         m_zoom = glm::max(0.1f, m_zoom);
                         m_cacheValid = false;
+                        if (m_kineticEnabled) {
+                            // Add an inertial impulse proportional to zoom scale (units/sec)
+                            m_zoomVel += event.wheel.y * (m_zoom * 0.6f);
+                        }
                     }
                     break;
                     
@@ -479,10 +522,46 @@ private:
                 m_pivotActive = false;
                 m_cacheValid = false;
                 break;
+            case SDL_SCANCODE_K:
+                m_kineticEnabled = !m_kineticEnabled;
+                std::cout << "Kinetic rotate/zoom: " << (m_kineticEnabled ? "ON" : "OFF") << std::endl;
+                break;
             default:
                 // no-op
                 break;
         }
+    }
+
+    // Kinetic motion update (rotation + zoom, no pan)
+    void updateKinetics(float dt) {
+        if (!m_kineticEnabled) return;
+        bool changed = false;
+
+        // rotational inertia (when not dragging)
+        if (!m_isRightDragging) {
+            if (std::abs(m_rotVelX) > K_ROTATE_EPS || std::abs(m_rotVelY) > K_ROTATE_EPS) {
+                m_rotationX += m_rotVelX * dt;
+                m_rotationY += m_rotVelY * dt;
+                m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
+                // damping
+                m_rotVelX -= m_rotVelX * K_ROTATE_DAMP * dt;
+                m_rotVelY -= m_rotVelY * K_ROTATE_DAMP * dt;
+                if (std::abs(m_rotVelX) <= K_ROTATE_EPS) m_rotVelX = 0.0f;
+                if (std::abs(m_rotVelY) <= K_ROTATE_EPS) m_rotVelY = 0.0f;
+                changed = true;
+            }
+        }
+
+        // zoom inertia
+        if (std::abs(m_zoomVel) > K_ZOOM_EPS) {
+            m_zoom -= m_zoomVel * dt;
+            m_zoom = glm::max(0.1f, m_zoom);
+            m_zoomVel -= m_zoomVel * K_ZOOM_DAMP * dt;
+            if (std::abs(m_zoomVel) <= K_ZOOM_EPS) m_zoomVel = 0.0f;
+            changed = true;
+        }
+
+        if (changed) m_cacheValid = false;
     }
     
     void render() {
@@ -592,6 +671,20 @@ private:
     // Cached screen-space vertex coordinates and validity flag
     std::vector<glm::vec2> m_screenCache;
     bool m_cacheValid;
+    // Kinetic control state
+    bool m_kineticEnabled;   // toggled by K, off by default
+    bool m_isRightDragging;  // track rotation dragging
+    float m_rotVelX;         // deg/sec for X rotation
+    float m_rotVelY;         // deg/sec for Y rotation
+    float m_zoomVel;         // zoom units/sec
+    Uint64 m_lastUpdateNS;   // last integration timestamp
+    Uint64 m_lastDragMotionNS; // last motion timestamp during drag
+
+    // Kinetic tuning constants
+    static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
+    static constexpr float K_ZOOM_DAMP   = 5.0f; // s^-1
+    static constexpr float K_ROTATE_EPS  = 2.0f; // deg/s threshold
+    static constexpr float K_ZOOM_EPS    = 1e-3f; // units/s threshold
     bool loadSTL(const std::string& path) {
         auto mesh = STLLoader::load(path);
         if (!mesh) {
@@ -604,6 +697,9 @@ private:
             m_zoom = extent * 1.5f;
             m_axisLength = extent * 0.1f;
             m_pivotActive = false; // reset pivot on new load
+            // clear kinetic velocities
+            m_rotVelX = m_rotVelY = 0.0f;
+            m_zoomVel = 0.0f;
         }
         return true;
     }
@@ -888,6 +984,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  Left Mouse: Pick pivot (draw axes)" << std::endl;
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
+    std::cout << "  K: Toggle kinetic rotate/zoom (inertia; no pan)" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;

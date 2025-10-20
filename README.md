@@ -80,6 +80,7 @@ mySTLViewer [stl_file]
 - **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
 - **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
+- **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
 - **Ctrl/Cmd + O**: Open file dialog (Load)
 - **Ctrl/Cmd + Q**: Quit application
 - **M**: Toggle OpenMP-based pivot picking (if enabled in the build)
@@ -90,6 +91,12 @@ mySTLViewer [stl_file]
 - **Q** or **ESC**: Quit application
 
 #### Custom Pivot Notes
+#### Kinetic Controls
+- Disabled by default; toggle with the K key.
+- Rotation inertia continues after you release the right mouse button, based on your last drag velocity.
+- Zoom inertia continues briefly after a mouse wheel scroll.
+- Panning is never affected by kinetic motion.
+
 - When a pivot is selected, rotations occur around that point; otherwise the model rotates around its center.
 - If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically.
 - Selecting a pivot does not shift the view; the chosen point stays under the cursor.
