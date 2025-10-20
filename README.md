@@ -1,5 +1,7 @@
 # mySTLViewer
 
+![Solid rendering example](screenshots/solid.png)
+
 A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 3.3+.
 
 ## Features
@@ -8,7 +10,7 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 - **Modern OpenGL**: Uses OpenGL 3.3+ with programmable shaders
 - **Dual Render Modes**: Switch between solid and wireframe rendering
 - **Orthogonal Projection**: Clean orthographic view of 3D models
-- **Interactive Controls**: Mouse-based rotation, pan, and zoom
+- **Interactive Controls**: Mouse-based rotation, pan, zoom, and custom rotation pivot
 - **Startup File Dialog**: Native file chooser on launch (argument optional)
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
 
@@ -74,14 +76,20 @@ mySTLViewer [stl_file]
 
 ### Controls
 
-- **Left Mouse Button + Drag**: Rotate the model
+- **Right Mouse Button + Drag**: Rotate the model
+- **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
 - **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
 - **W**: Switch to wireframe mode
 - **S**: Switch to solid mode
 - **V**: Toggle VSync
-- **R**: Reset view to default position
+- **R**: Reset view to default position and clear custom pivot
 - **Q** or **ESC**: Quit application
+
+#### Custom Pivot Notes
+- When a pivot is selected, rotations occur around that point; otherwise the model rotates around its center.
+- If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically.
+- Selecting a pivot does not shift the view; the chosen point stays under the cursor.
 
 ## Project Structure
 
