@@ -6,11 +6,6 @@
 #include <string>
 #include <memory>
 
-enum class RenderMode {
-    SOLID,
-    WIREFRAME
-};
-
 class Renderer {
 public:
     Renderer();
@@ -19,8 +14,11 @@ public:
     bool initialize();
     void setMesh(std::unique_ptr<Mesh> mesh);
     void render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model);
-    void setRenderMode(RenderMode mode);
-    RenderMode getRenderMode() const { return m_renderMode; }
+    // Draw toggles
+    void setDrawSolid(bool enabled) { m_drawSolid = enabled; }
+    bool getDrawSolid() const { return m_drawSolid; }
+    void setDrawWireframe(bool enabled) { m_drawWireframe = enabled; }
+    bool getDrawWireframe() const { return m_drawWireframe; }
     void setDrawFacetNormals(bool enabled) { m_drawFacetNormals = enabled; }
     bool getDrawFacetNormals() const { return m_drawFacetNormals; }
     void setNormalLengthScale(float s) { m_normalLengthScale = s; }
@@ -64,7 +62,8 @@ private:
     bool m_drawFacetNormals;
     float m_normalLengthScale; // relative to model extent
     bool m_cullingEnabled; // back-face culling toggle
-    RenderMode m_renderMode;
+    bool m_drawSolid;     // draw solid triangles
+    bool m_drawWireframe; // draw wireframe edges
     size_t m_indexCount;     // Number of triangle indices for rendering
     size_t m_edgeIndexCount; // Number of edge indices for wireframe
 };

@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 #include <cmath>
+#include <filesystem>
 #include "STLLoader.h"
 #include "XMLLoader.h"
 #include "Renderer.h"
@@ -372,14 +373,6 @@ private:
                                 std::cout << "Q pressed (text) - Quitting" << std::endl;
                                 m_running = false;
                                 break;
-                            case 'w': case 'W':
-                                std::cout << "W pressed (text) - Switching to wireframe mode" << std::endl;
-                                m_renderer.setRenderMode(RenderMode::WIREFRAME);
-                                break;
-                            case 's': case 'S':
-                                std::cout << "S pressed (text) - Switching to solid mode" << std::endl;
-                                m_renderer.setRenderMode(RenderMode::SOLID);
-                                break;
                             case 'r': case 'R':
                                 std::cout << "R pressed (text) - Resetting view" << std::endl;
                                 m_rotationX = 30.0f;
@@ -559,14 +552,18 @@ private:
                 }
                 break;
             }
-            case SDL_SCANCODE_W:
-                std::cout << "W pressed - Switching to wireframe mode" << std::endl;
-                m_renderer.setRenderMode(RenderMode::WIREFRAME);
+            case SDL_SCANCODE_W: {
+                bool newVal = !m_renderer.getDrawWireframe();
+                m_renderer.setDrawWireframe(newVal);
+                std::cout << "Wireframe: " << (newVal ? "ON" : "OFF") << std::endl;
                 break;
-            case SDL_SCANCODE_S:
-                std::cout << "S pressed - Switching to solid mode" << std::endl;
-                m_renderer.setRenderMode(RenderMode::SOLID);
+            }
+            case SDL_SCANCODE_S: {
+                bool newVal = !m_renderer.getDrawSolid();
+                m_renderer.setDrawSolid(newVal);
+                std::cout << "Solid: " << (newVal ? "ON" : "OFF") << std::endl;
                 break;
+            }
             case SDL_SCANCODE_N:
                 m_drawFacetNormals = !m_drawFacetNormals;
                 m_renderer.setDrawFacetNormals(m_drawFacetNormals);
@@ -1093,6 +1090,23 @@ private:
 };
 
 int main(int argc, char* argv[]) {
+    // When launched without arguments (e.g., double-clicked in Finder),
+    // change CWD to the executable's directory so shaders can be found
+    if (argc < 2 && argv[0]) {
+        std::filesystem::path exePath(argv[0]);
+        std::filesystem::path exeDir = exePath.parent_path();
+        if (!exeDir.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(exeDir, ec);
+            if (!ec) {
+                std::cout << "Changed working directory to: " << exeDir << std::endl;
+            } else {
+                std::cerr << "Warning: Failed to change directory to " << exeDir 
+                          << ": " << ec.message() << std::endl;
+            }
+        }
+    }
+    
     std::string stlFile;
     if (argc >= 2) {
         stlFile = argv[1];
@@ -1114,8 +1128,9 @@ int main(int argc, char* argv[]) {
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
     std::cout << "  C: Toggle back-face culling" << std::endl;
     std::cout << "  N: Toggle normals debug (facet=magenta, triangle=cyan)" << std::endl;
-    std::cout << "  W: Wireframe mode" << std::endl;
-    std::cout << "  S: Solid mode" << std::endl;
+    std::cout << "  W: Toggle wireframe overlay (black)" << std::endl;
+    std::cout << "  S: Toggle solid fill" << std::endl;
+    std::cout << "     When both are ON, wireframe draws on top of solid." << std::endl;
     std::cout << "  R: Reset view" << std::endl;
     std::cout << "  Q/ESC: Quit" << std::endl;
     

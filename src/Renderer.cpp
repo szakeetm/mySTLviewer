@@ -6,15 +6,15 @@
 #include <mapbox/earcut.hpp>
 
 Renderer::Renderer()
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0),
-      m_shaderProgramSolid(0), m_shaderProgramWireframe(0),
-    m_normalsVAO(0), m_normalsVBO(0), m_shaderProgramNormals(0),
-    m_normalsVertexCount(0),
-    m_triNormalsVAO(0), m_triNormalsVBO(0), m_triNormalsVertexCount(0),
-    m_triEdgesVAO(0), m_triEdgesVBO(0), m_triEdgesVertexCount(0),
-    m_solidVAO(0), m_solidVBO(0), m_solidVertexCount(0),
-    m_drawFacetNormals(false), m_normalLengthScale(0.03f), m_cullingEnabled(false),
-      m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
+        : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0),
+            m_shaderProgramSolid(0), m_shaderProgramWireframe(0),
+        m_normalsVAO(0), m_normalsVBO(0), m_shaderProgramNormals(0),
+        m_normalsVertexCount(0),
+        m_triNormalsVAO(0), m_triNormalsVBO(0), m_triNormalsVertexCount(0),
+        m_triEdgesVAO(0), m_triEdgesVBO(0), m_triEdgesVertexCount(0),
+        m_solidVAO(0), m_solidVBO(0), m_solidVertexCount(0),
+        m_drawFacetNormals(false), m_normalLengthScale(0.03f), m_cullingEnabled(false),
+            m_drawSolid(true), m_drawWireframe(true), m_indexCount(0), m_edgeIndexCount(0) {
 }
 
 Renderer::~Renderer() {
@@ -297,38 +297,17 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     if (!m_mesh || m_mesh->vertices.empty()) {
         return;
     }
-    
-    // Choose shader program based on mode
-    GLuint program = (m_renderMode == RenderMode::WIREFRAME) ? m_shaderProgramWireframe : m_shaderProgramSolid;
-    if (!program) return;
-    glUseProgram(program);
-    
-    // Set uniforms
-    GLint projLoc = glGetUniformLocation(program, "projection");
-    GLint viewLoc = glGetUniformLocation(program, "view");
-    GLint modelLoc = glGetUniformLocation(program, "model");
-    
-    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    
-    // Bind appropriate VAO for mode
-    GLuint activeVAO = m_VAO;
-    if (m_renderMode == RenderMode::SOLID && m_solidVAO) {
-        activeVAO = m_solidVAO;
-    }
-    glBindVertexArray(activeVAO);
-    
-    if (m_renderMode == RenderMode::WIREFRAME) {
-        // Wireframe: draw edges using GL_LINES
-        glLineWidth(1.5f);
-        glDisable(GL_CULL_FACE);
-        
-        // Bind the edge buffer and draw lines
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
-        glDrawElements(GL_LINES, m_edgeIndexCount, GL_UNSIGNED_INT, 0);
-    } else {
-        // Solid: draw triangles
+
+    // Pass 1: Solid fill (if enabled)
+    if (m_drawSolid && m_shaderProgramSolid) {
+        glUseProgram(m_shaderProgramSolid);
+        GLint projLoc = glGetUniformLocation(m_shaderProgramSolid, "projection");
+        GLint viewLoc = glGetUniformLocation(m_shaderProgramSolid, "view");
+        GLint modelLoc = glGetUniformLocation(m_shaderProgramSolid, "model");
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
         glDisable(GL_LINE_SMOOTH);
         glDisable(GL_BLEND);
         if (m_cullingEnabled) {
@@ -337,17 +316,44 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
         } else {
             glDisable(GL_CULL_FACE);
         }
-        
-        if (activeVAO == m_solidVAO) {
+
+        if (m_solidVAO && m_solidVertexCount > 0) {
+            glBindVertexArray(m_solidVAO);
             glDrawArrays(GL_TRIANGLES, 0, m_solidVertexCount);
+            glBindVertexArray(0);
         } else {
-            // Fallback: indexed draw if solid VAO not available
+            glBindVertexArray(m_VAO);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
             glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
         }
     }
-    
-    glBindVertexArray(0);
+
+    // Pass 2: Wireframe overlay (if enabled)
+    if (m_drawWireframe && m_shaderProgramWireframe) {
+        glUseProgram(m_shaderProgramWireframe);
+        GLint projLoc = glGetUniformLocation(m_shaderProgramWireframe, "projection");
+        GLint viewLoc = glGetUniformLocation(m_shaderProgramWireframe, "view");
+        GLint modelLoc = glGetUniformLocation(m_shaderProgramWireframe, "model");
+        GLint colorLoc = glGetUniformLocation(m_shaderProgramWireframe, "lineColor");
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        
+        // White when wireframe-only, black when overlaid on solid
+        if (m_drawSolid) {
+            glUniform3f(colorLoc, 0.0f, 0.0f, 0.0f); // black overlay
+        } else {
+            glUniform3f(colorLoc, 1.0f, 1.0f, 1.0f); // white wireframe
+        }
+
+        glLineWidth(1.5f);
+        glDisable(GL_CULL_FACE);
+        glBindVertexArray(m_VAO);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
+        glDrawElements(GL_LINES, m_edgeIndexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
 
     // Optional: draw normals for debugging
     if (m_drawFacetNormals && m_shaderProgramNormals) {
@@ -388,9 +394,7 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     }
 }
 
-void Renderer::setRenderMode(RenderMode mode) {
-    m_renderMode = mode;
-}
+// setRenderMode removed in favor of independent toggles
 
 bool Renderer::loadShaders() {
     // Load solid shaders from files
@@ -437,12 +441,13 @@ bool Renderer::loadShaders() {
     glDeleteShader(fSolid);
     if (!m_shaderProgramSolid) return false;
 
-    // Create a minimal wireframe fragment shader (pure white) using the same vertex shader
+    // Create wireframe fragment shader with uniform color
     const char* wireFrag = R"(
         #version 330 core
+        uniform vec3 lineColor;
         out vec4 FragColor;
         void main() {
-            FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            FragColor = vec4(lineColor, 1.0);
         }
     )";
     GLuint vWire = compileShader(vertexCode, GL_VERTEX_SHADER);
