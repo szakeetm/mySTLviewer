@@ -41,7 +41,8 @@ public:
                     , m_isDKeyPressed(false)
                     , m_isLeftDragging(false)
                     , m_lastMouseX(0)
-                    , m_lastMouseY(0) {}
+                    , m_lastMouseY(0)
+                    , m_drawFacetNormals(false) {}
     
     ~Application() {
         cleanup();
@@ -566,6 +567,11 @@ private:
                 std::cout << "S pressed - Switching to solid mode" << std::endl;
                 m_renderer.setRenderMode(RenderMode::SOLID);
                 break;
+            case SDL_SCANCODE_N:
+                m_drawFacetNormals = !m_drawFacetNormals;
+                m_renderer.setDrawFacetNormals(m_drawFacetNormals);
+                std::cout << "Facet normals debug: " << (m_drawFacetNormals ? "ON" : "OFF") << std::endl;
+                break;
             case SDL_SCANCODE_M:
 #ifdef HAVE_OPENMP
                 m_useOpenMP = !m_useOpenMP;
@@ -763,6 +769,7 @@ private:
     bool m_isLeftDragging;   // left mouse dragging state
     int m_lastMouseX;        // previous mouse X position
     int m_lastMouseY;        // previous mouse Y position
+    bool m_drawFacetNormals; // toggle for facet normals debug
 
     // Kinetic tuning constants
     static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
@@ -1097,6 +1104,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  K: Toggle kinetic rotate/zoom (inertia; no pan)" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
+    std::cout << "  N: Toggle facet normals debug" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;
     std::cout << "  S: Solid mode" << std::endl;
     std::cout << "  R: Reset view" << std::endl;

@@ -6,7 +6,11 @@
 #include <mapbox/earcut.hpp>
 
 Renderer::Renderer()
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
+    : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0),
+      m_shaderProgramSolid(0), m_shaderProgramWireframe(0),
+      m_normalsVAO(0), m_normalsVBO(0), m_shaderProgramNormals(0),
+      m_normalsVertexCount(0), m_drawFacetNormals(false), m_normalLengthScale(0.03f),
+      m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
 }
 
 Renderer::~Renderer() {
@@ -16,6 +20,9 @@ Renderer::~Renderer() {
     if (m_edgeEBO) glDeleteBuffers(1, &m_edgeEBO);
     if (m_shaderProgramSolid) glDeleteProgram(m_shaderProgramSolid);
     if (m_shaderProgramWireframe) glDeleteProgram(m_shaderProgramWireframe);
+    if (m_normalsVAO) glDeleteVertexArrays(1, &m_normalsVAO);
+    if (m_normalsVBO) glDeleteBuffers(1, &m_normalsVBO);
+    if (m_shaderProgramNormals) glDeleteProgram(m_shaderProgramNormals);
 }
 
 bool Renderer::initialize() {
@@ -41,6 +48,8 @@ void Renderer::setupMesh() {
     if (m_VBO) glDeleteBuffers(1, &m_VBO);
     if (m_EBO) glDeleteBuffers(1, &m_EBO);
     if (m_edgeEBO) glDeleteBuffers(1, &m_edgeEBO);
+    if (m_normalsVAO) { glDeleteVertexArrays(1, &m_normalsVAO); m_normalsVAO = 0; }
+    if (m_normalsVBO) { glDeleteBuffers(1, &m_normalsVBO); m_normalsVBO = 0; }
     
     // Generate buffers
     glGenVertexArrays(1, &m_VAO);
@@ -144,6 +153,9 @@ void Renderer::setupMesh() {
     std::cout << "Mesh setup complete: " << m_mesh->vertices.size() 
               << " vertices, " << m_mesh->facets.size() << " facets, " 
               << m_indexCount / 3 << " triangles" << std::endl;
+
+    // Build facet normals debug geometry
+    setupFacetNormals();
 }
 
 void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
@@ -188,6 +200,28 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     }
     
     glBindVertexArray(0);
+
+    // Optional: draw facet normals for debugging
+    if (m_drawFacetNormals && m_shaderProgramNormals && m_normalsVAO && m_normalsVertexCount > 0) {
+        GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
+        // Draw on top so you can always see them
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(m_shaderProgramNormals);
+        GLint projLoc = glGetUniformLocation(m_shaderProgramNormals, "projection");
+        GLint viewLoc = glGetUniformLocation(m_shaderProgramNormals, "view");
+        GLint modelLoc = glGetUniformLocation(m_shaderProgramNormals, "model");
+        GLint colorLoc = glGetUniformLocation(m_shaderProgramNormals, "color");
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        // Magenta for visibility
+        glUniform3f(colorLoc, 1.0f, 0.0f, 1.0f);
+        glBindVertexArray(m_normalsVAO);
+        glLineWidth(1.5f);
+        glDrawArrays(GL_LINES, 0, m_normalsVertexCount);
+        glBindVertexArray(0);
+        if (wasDepth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    }
 }
 
 void Renderer::setRenderMode(RenderMode mode) {
@@ -232,6 +266,33 @@ bool Renderer::loadShaders() {
     glDeleteShader(fWire);
     if (!m_shaderProgramWireframe) return false;
 
+    // Create a simple shader for drawing facet normals as lines with uniform color
+    const char* normalsVS = R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        uniform mat4 projection;
+        uniform mat4 view;
+        uniform mat4 model;
+        void main(){
+            gl_Position = projection * view * model * vec4(aPos, 1.0);
+        }
+    )";
+    const char* normalsFS = R"(
+        #version 330 core
+        uniform vec3 color;
+        out vec4 FragColor;
+        void main(){
+            FragColor = vec4(color, 1.0);
+        }
+    )";
+    GLuint vNorm = compileShader(std::string(normalsVS), GL_VERTEX_SHADER);
+    GLuint fNorm = compileShader(std::string(normalsFS), GL_FRAGMENT_SHADER);
+    if (!vNorm || !fNorm) return false;
+    m_shaderProgramNormals = linkProgram(vNorm, fNorm);
+    glDeleteShader(vNorm);
+    glDeleteShader(fNorm);
+    if (!m_shaderProgramNormals) return false;
+
     return true;
 }
 
@@ -269,4 +330,57 @@ GLuint Renderer::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
     }
     
     return program;
+}
+
+void Renderer::setupFacetNormals() {
+    m_normalsVertexCount = 0;
+    if (!m_mesh || m_mesh->facets.empty()) return;
+
+    // Compute scale from mesh extent
+    float length = glm::max(0.001f, m_mesh->getMaxExtent() * m_normalLengthScale);
+
+    std::vector<glm::vec3> lineVerts;
+    lineVerts.reserve(m_mesh->facets.size() * 2);
+
+    for (const auto& facet : m_mesh->facets) {
+        if (facet.indices.size() < 3) continue;
+        // Compute centroid
+        glm::vec3 centroid(0.0f);
+        for (unsigned int idx : facet.indices) {
+            centroid += m_mesh->vertices[idx].position;
+        }
+        centroid /= static_cast<float>(facet.indices.size());
+        // Compute normal using Newell's method for robustness
+        glm::vec3 normal(0.0f);
+        for (size_t i = 0; i < facet.indices.size(); ++i) {
+            const glm::vec3& v1 = m_mesh->vertices[facet.indices[i]].position;
+            const glm::vec3& v2 = m_mesh->vertices[facet.indices[(i + 1) % facet.indices.size()]].position;
+            normal.x += (v1.y - v2.y) * (v1.z + v2.z);
+            normal.y += (v1.z - v2.z) * (v1.x + v2.x);
+            normal.z += (v1.x - v2.x) * (v1.y + v2.y);
+        }
+        float len = glm::length(normal);
+        if (len > 1e-6f) normal /= len; else {
+            // Fallback to cross of first two edges
+            const glm::vec3& a = m_mesh->vertices[facet.indices[0]].position;
+            const glm::vec3& b = m_mesh->vertices[facet.indices[1]].position;
+            const glm::vec3& c = m_mesh->vertices[facet.indices[2]].position;
+            normal = glm::normalize(glm::cross(b - a, c - a));
+        }
+        lineVerts.push_back(centroid);
+        lineVerts.push_back(centroid + normal * length);
+    }
+
+    if (lineVerts.empty()) return;
+
+    // Create VAO/VBO for lines
+    glGenVertexArrays(1, &m_normalsVAO);
+    glGenBuffers(1, &m_normalsVBO);
+    glBindVertexArray(m_normalsVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_normalsVBO);
+    glBufferData(GL_ARRAY_BUFFER, lineVerts.size() * sizeof(glm::vec3), lineVerts.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+    m_normalsVertexCount = static_cast<GLsizei>(lineVerts.size());
 }
