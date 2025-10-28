@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <glm/gtc/type_ptr.hpp>
+#include <mapbox/earcut.hpp>
 
 Renderer::Renderer()
     : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
@@ -54,19 +55,45 @@ void Renderer::setupMesh() {
     glBufferData(GL_ARRAY_BUFFER, m_mesh->vertices.size() * sizeof(Vertex),
                  m_mesh->vertices.data(), GL_STATIC_DRAW);
     
-    // Convert facets to triangle indices for OpenGL (solid mode)
-    // For now, we triangulate by simple fan triangulation (works for convex polygons)
+    // Convert facets to triangle indices using earcut for proper triangulation
     std::vector<unsigned int> triangleIndices;
+    
     for (const auto& facet : m_mesh->facets) {
         if (facet.indices.size() < 3) {
             continue; // Skip degenerate facets
         }
         
-        // Fan triangulation: connect vertex 0 to all other edges
-        for (size_t i = 1; i + 1 < facet.indices.size(); ++i) {
+        // For triangles, just add the indices directly
+        if (facet.indices.size() == 3) {
             triangleIndices.push_back(facet.indices[0]);
-            triangleIndices.push_back(facet.indices[i]);
-            triangleIndices.push_back(facet.indices[i + 1]);
+            triangleIndices.push_back(facet.indices[1]);
+            triangleIndices.push_back(facet.indices[2]);
+        } else {
+            // For polygons with more than 3 vertices, use earcut for proper triangulation
+            // Earcut expects a vector of polygons, where each polygon is a vector of points
+            // Each point is an array-like structure with at least 2 coordinates
+            
+            // Build the polygon for earcut (2D projection - use first two components)
+            using Point = std::array<double, 2>;
+            std::vector<std::vector<Point>> polygon;
+            std::vector<Point> ring;
+            
+            for (unsigned int idx : facet.indices) {
+                const auto& pos = m_mesh->vertices[idx].position;
+                // Project to 2D using X and Y coordinates
+                // TODO: For better results, project onto the plane defined by the facet normal
+                ring.push_back({static_cast<double>(pos.x), static_cast<double>(pos.y)});
+            }
+            
+            polygon.push_back(ring);
+            
+            // Run earcut triangulation
+            std::vector<unsigned int> localIndices = mapbox::earcut<unsigned int>(polygon);
+            
+            // Add the triangulated indices (offset by the facet's base indices)
+            for (unsigned int localIdx : localIndices) {
+                triangleIndices.push_back(facet.indices[localIdx]);
+            }
         }
     }
     

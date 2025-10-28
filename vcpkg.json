@@ -6,6 +6,7 @@
     "sdl3",
     "glad",
     "glm",
-    "nativefiledialog-extended"
+    "nativefiledialog-extended",
+    "earcut-hpp"
   ]
 }
