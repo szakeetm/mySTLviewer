@@ -7,6 +7,10 @@
     "glad",
     "glm",
     "nativefiledialog-extended",
-    "earcut-hpp"
+    "earcut-hpp",
+    {
+      "name": "pugixml",
+      "features": ["compact"]
+    }
   ]
 }

@@ -9,17 +9,21 @@ find_package(SDL3 CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(nfd CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
+find_path(EARCUT_HPP_INCLUDE_DIRS "mapbox/earcut.hpp")
 find_package(OpenMP)
 
 # Source files
 set(SOURCES
     src/main.cpp
     src/STLLoader.cpp
+    src/XMLLoader.cpp
     src/Renderer.cpp
 )
 
 set(HEADERS
     src/STLLoader.h
+    src/XMLLoader.h
     src/Renderer.h
     src/Mesh.h
 )
@@ -34,11 +38,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glad::glad
     glm::glm
     nfd::nfd
+    pugixml::pugixml
 )
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${EARCUT_HPP_INCLUDE_DIRS}
 )
 
 if (OpenMP_CXX_FOUND)

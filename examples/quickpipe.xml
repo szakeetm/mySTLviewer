@@ -1,0 +1,298 @@
+<?xml version="1.0"?>
+<SimulationEnvironment type="MolFlow" version="21000">
+	<Geometry>
+		<Vertices nb="10">
+			<Vertex id="0" x="1" y="0" z="0" />
+			<Vertex id="1" x="1" y="0" z="5" />
+			<Vertex id="2" x="0.30901699437494745" y="0.95105651629515353" z="0" />
+			<Vertex id="3" x="0.30901699437494745" y="0.95105651629515353" z="5" />
+			<Vertex id="4" x="-0.80901699437494734" y="0.58778525229247325" z="0" />
+			<Vertex id="5" x="-0.80901699437494734" y="0.58778525229247325" z="5" />
+			<Vertex id="6" x="-0.80901699437494745" y="-0.58778525229247303" z="0" />
+			<Vertex id="7" x="-0.80901699437494745" y="-0.58778525229247303" z="5" />
+			<Vertex id="8" x="0.30901699437494723" y="-0.95105651629515364" z="0" />
+			<Vertex id="9" x="0.30901699437494723" y="-0.95105651629515364" z="5" />
+		</Vertices>
+		<Facets nb="7">
+			<Facet id="0">
+				<Sticking constValue="1" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="1" parameterId="-1" desType="2" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00023776412907378834" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="5">
+					<Indice id="0" vertex="0" />
+					<Indice id="1" vertex="2" />
+					<Indice id="2" vertex="4" />
+					<Indice id="3" vertex="6" />
+					<Indice id="4" vertex="8" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="1">
+				<Sticking constValue="1" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00023776412907378848" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="5">
+					<Indice id="0" vertex="9" />
+					<Indice id="1" vertex="7" />
+					<Indice id="2" vertex="5" />
+					<Indice id="3" vertex="3" />
+					<Indice id="4" vertex="1" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="2">
+				<Sticking constValue="0" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00058778525229247333" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="4">
+					<Indice id="0" vertex="0" />
+					<Indice id="1" vertex="1" />
+					<Indice id="2" vertex="3" />
+					<Indice id="3" vertex="2" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="3">
+				<Sticking constValue="0" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00058778525229247333" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="4">
+					<Indice id="0" vertex="2" />
+					<Indice id="1" vertex="3" />
+					<Indice id="2" vertex="5" />
+					<Indice id="3" vertex="4" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="4">
+				<Sticking constValue="0" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00058778525229247322" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="4">
+					<Indice id="0" vertex="4" />
+					<Indice id="1" vertex="5" />
+					<Indice id="2" vertex="7" />
+					<Indice id="3" vertex="6" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="5">
+				<Sticking constValue="0" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00058778525229247322" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="4">
+					<Indice id="0" vertex="6" />
+					<Indice id="1" vertex="7" />
+					<Indice id="2" vertex="9" />
+					<Indice id="3" vertex="8" />
+				</Indices>
+				<Histograms />
+			</Facet>
+			<Facet id="6">
+				<Sticking constValue="0" parameterId="-1" />
+				<Opacity constValue="1" parameterId="-1" is2sided="0" />
+				<Outgassing constValue="0" parameterId="-1" desType="0" desExponent="0" outgassingPerAreaMode="false" hasOutgassingFile="0" useOutgassingFile="0" />
+				<Temperature value="293.14999999999998" accFactor="1" />
+				<Area m2="0.00058778525229247333" />
+				<Reflection diffusePart="1" specularPart="0" cosineExponent="0" enableSojournTime="0" sojournFreq="10000000000000" sojournE="100" />
+				<Structure inStructure="0" linksTo="0" />
+				<Teleport target="0" />
+				<Motion isMoving="0" />
+				<Recordings>
+					<Profile type="0" name="none" />
+					<Texture hasMesh="false" texDimX="0" texDimY="0" countDes="0" countAbs="0" countRefl="0" countTrans="0" countDir="0" countAC="0" />
+				</Recordings>
+				<ViewSettings textureVisible="true" volumeVisible="true" />
+				<Indices nb="4">
+					<Indice id="0" vertex="8" />
+					<Indice id="1" vertex="9" />
+					<Indice id="2" vertex="1" />
+					<Indice id="3" vertex="0" />
+				</Indices>
+				<Histograms />
+			</Facet>
+		</Facets>
+		<Structures nb="1">
+			<Structure id="0" name="Pipe" />
+		</Structures>
+	</Geometry>
+	<MolflowSimuSettings>
+		<Gas mass="28" enableDecay="0" halfLife="1">
+			<Scattering enabled="false" massRatio="1" meanFreePath_cm="10">
+				<LowSpeedCutoff enabled="false" speed="10" />
+			</Scattering>
+			<Outgassing_info final_rate_molecules_per_s="2.4719006691435115e+20" total_desorbed_molecules="12359503345.717558" />
+		</Gas>
+		<LowFluxMode enabled="false" cutoff="9.9999999999999995e-08" />
+		<TimeSettings timeWindow="1e-10" useMaxwellDistr="1" calcConstFlow="1">
+			<UserMoments nb="0" />
+			<Info latest_moment_s="5.0000000000000002e-11" />
+		</TimeSettings>
+		<Motion type="0" />
+		<MeasureForces enabled="false">
+			<Torque>
+				<refPoint x="0" y="0" z="0" />
+			</Torque>
+		</MeasureForces>
+		<Parameters nb="0" />
+		<Global_histograms />
+	</MolflowSimuSettings>
+	<Interface>
+		<Selections nb="0" />
+		<UserSavedViews nb="0" />
+		<ViewerCurrentViews>
+			<View name="" projMode="1" camAngleOx="0" camAngleOy="0" camAngleOz="0" camDist="1" lightAngleOx="0" lightAngleOy="0" camOffset.x="0" camOffset.y="0" camOffset.z="0" performXY="3" vLeft="-1.2397058823529412" vRight="1.2397058823529412" vTop="-1.146229913473424" vBottom="1.146229913473424">
+				<Clipping enabled="false" a="0" b="0" c="1" d="0" />
+			</View>
+			<View name="" projMode="1" camAngleOx="-1.5707963267948966" camAngleOy="0" camAngleOz="0" camDist="1" lightAngleOx="0" lightAngleOy="0" camOffset.x="0" camOffset.y="0" camOffset.z="0" performXY="1" vLeft="-1.1500000000000001" vRight="1.1500000000000001" vTop="-1.1500000000000001" vBottom="1.1500000000000001">
+				<Clipping enabled="false" a="0" b="0" c="1" d="0" />
+			</View>
+			<View name="" projMode="1" camAngleOx="0" camAngleOy="1.5707963267948966" camAngleOz="0" camDist="1" lightAngleOx="0" lightAngleOy="0" camOffset.x="0" camOffset.y="0" camOffset.z="0" performXY="2" vLeft="-1.1500000000000001" vRight="1.1500000000000001" vTop="-1.1500000000000001" vBottom="1.1500000000000001">
+				<Clipping enabled="false" a="0" b="0" c="1" d="0" />
+			</View>
+			<View name="" projMode="0" camAngleOx="0" camAngleOy="3.1415926535897931" camAngleOz="0" camDist="3.4668451413204631" lightAngleOx="0" lightAngleOy="0" camOffset.x="0" camOffset.y="0" camOffset.z="0" performXY="0" vLeft="-1" vRight="1" vTop="-1" vBottom="1">
+				<Clipping enabled="false" a="0" b="0" c="1" d="0" />
+			</View>
+		</ViewerCurrentViews>
+		<Formulas nb="1">
+			<Formula id="0" name="Trans.prob." expression="A2/SUMDES" />
+		</Formulas>
+		<TextureSettings>
+			<DisplaySettings autoscale="true" autoscaleMode="1" color="true" logScale="true" physicsMode="0" />
+			<Limits>
+				<Autoscale>
+					<Constant_flow>
+						<Pressure min="inf" max="-inf" />
+						<Density min="inf" max="-inf" />
+						<Imp.rate min="inf" max="-inf" />
+					</Constant_flow>
+					<Moments_only>
+						<Pressure min="inf" max="-inf" />
+						<Density min="inf" max="-inf" />
+						<Imp.rate min="inf" max="-inf" />
+					</Moments_only>
+				</Autoscale>
+				<Manual>
+					<Constant_flow>
+						<Pressure min="inf" max="-inf" />
+						<Density min="inf" max="-inf" />
+						<Imp.rate min="inf" max="-inf" />
+					</Constant_flow>
+				</Manual>
+			</Limits>
+		</TextureSettings>
+		<Paths nb="0" />
+		<Metadata usedAppVersion="MolFlow 2.10.0">
+			<Dates firstSaved="2025-10-28 13:05:08" lastSaved="2025-10-28 13:05:08" />
+			<UserMemo authors="">
+				<Memo><![CDATA[This is a test pipe generated by MolFlow.
+L=5 R=1
+L/R ratio: 5, Sides: 5]]></Memo>
+			</UserMemo>
+		</Metadata>
+	</Interface>
+	<MolflowResults>
+		<Moments nb="1">
+			<Moment id="0" time="Constant flow" timeWindow="0" molecules_per_TP="0">
+				<Global>
+					<Hits totalHit="0" totalHitEquiv="0" totalDes="0" totalAbsEquiv="0" totalReflEquiv="0" totalDist_total="0" totalDist_fullHitsOnly="0" totalLeak="0" maxDesorption="0" />
+					<Hit_Cache nb="0" />
+					<Leak_Cache nb="0" />
+				</Global>
+				<FacetResults>
+					<Facet id="0">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="1">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="2">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="3">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="4">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="5">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+					<Facet id="6">
+						<Hits nbHit="0" nbHitEquiv="0" nbDes="0" nbAbsEquiv="0" nbReflEquiv="0" sum_v_ort="0" sum_1_per_v="0" sum_v="0" />
+					</Facet>
+				</FacetResults>
+			</Moment>
+		</Moments>
+		<Convergence>
+			<ConvData Formula="A2/SUMDES" nbEntries="0"><![CDATA[
+]]></ConvData>
+		</Convergence>
+	</MolflowResults>
+</SimulationEnvironment>

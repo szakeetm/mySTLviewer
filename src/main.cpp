@@ -9,6 +9,7 @@
 #include <vector>
 #include <cmath>
 #include "STLLoader.h"
+#include "XMLLoader.h"
 #include "Renderer.h"
 
 const int WINDOW_WIDTH = 1024;
@@ -157,7 +158,7 @@ public:
         
         // If no file path was provided, open file dialog AFTER window is active
         if (!stlFile.empty()) {
-            if (!loadSTL(stlFile)) return false;
+            if (!loadGeometry(stlFile)) return false;
         } else {
             if (!openFileDialogAndLoad(true)) return false; // required on startup
         }
@@ -768,10 +769,25 @@ private:
     static constexpr float K_ZOOM_DAMP   = 5.0f; // s^-1
     static constexpr float K_ROTATE_EPS  = 2.0f; // deg/s threshold
     static constexpr float K_ZOOM_EPS    = 1e-3f; // units/s threshold
-    bool loadSTL(const std::string& path) {
-        auto mesh = STLLoader::load(path);
+    bool loadGeometry(const std::string& path) {
+        std::unique_ptr<Mesh> mesh;
+        
+        // Determine file type and load accordingly
+        size_t dotPos = path.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            std::string ext = path.substr(dotPos);
+            if (ext == ".xml" || ext == ".XML") {
+                mesh = XMLLoader::load(path);
+            } else {
+                mesh = STLLoader::load(path);
+            }
+        } else {
+            // No extension, try STL
+            mesh = STLLoader::load(path);
+        }
+        
         if (!mesh) {
-            std::cerr << "Failed to load STL file: " << path << std::endl;
+            std::cerr << "Failed to load file: " << path << std::endl;
             return false;
         }
         m_renderer.setMesh(std::move(mesh));
@@ -793,13 +809,16 @@ private:
             return false;
         }
         nfdchar_t* outPath = nullptr;
-        nfdfilteritem_t filters[1] = { { "STL Files", "stl" } };
-        nfdresult_t result = NFD_OpenDialog(&outPath, filters, 1, nullptr);
+        nfdfilteritem_t filters[2] = { 
+            { "Geometry Files", "stl,xml" },
+            { "All Files", "*" }
+        };
+        nfdresult_t result = NFD_OpenDialog(&outPath, filters, 2, nullptr);
         if (result == NFD_OKAY) {
             std::string selectedFile = outPath;
             NFD_FreePath(outPath);
             NFD_Quit();
-            return loadSTL(selectedFile);
+            return loadGeometry(selectedFile);
         } else if (result == NFD_CANCEL) {
             NFD_Quit();
             if (required) {
