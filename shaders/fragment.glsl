@@ -1,12 +1,12 @@
 #version 330 core
 
-in vec3 FragPos;
-in vec3 Normal;
-in vec3 WorldPos;
+in vec3 FragPos;   // world-space position
+in vec3 Normal;    // interpolated normal (unused for flat shading)
+in vec3 WorldPos;  // view-space position
 
 out vec4 FragColor;
 
-uniform bool isWireframe; // true = wireframe, false = solid
+uniform bool isWireframe; // legacy, solid uses separate program
 
 void main()
 {
@@ -16,9 +16,12 @@ void main()
         return;
     }
 
-    // Solid mode - grey material with lighting
+    // Solid mode - flat shading using face normal from screen-space derivatives
     vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
-    vec3 norm = normalize(Normal);
+    // Compute face normal from derivatives of world-space position
+    vec3 faceN = normalize(cross(dFdx(FragPos), dFdy(FragPos)));
+    // Ensure consistent orientation w.r.t. front-facing
+    vec3 norm = gl_FrontFacing ? faceN : -faceN;
     
     // Ambient lighting (slightly higher for brighter base)
     float ambientStrength = 0.45;

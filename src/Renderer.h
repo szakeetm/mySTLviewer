@@ -25,6 +25,8 @@ public:
     bool getDrawFacetNormals() const { return m_drawFacetNormals; }
     void setNormalLengthScale(float s) { m_normalLengthScale = s; }
     float getNormalLengthScale() const { return m_normalLengthScale; }
+    void setCullingEnabled(bool enabled) { m_cullingEnabled = enabled; }
+    bool getCullingEnabled() const { return m_cullingEnabled; }
     
     Mesh* getMesh() const { return m_mesh.get(); }
     
@@ -47,8 +49,17 @@ private:
     GLuint m_normalsVBO;
     GLuint m_shaderProgramNormals;
     GLsizei m_normalsVertexCount; // number of vertices (2 per facet)
+    // Debug: triangle normals
+    GLuint m_triNormalsVAO;
+    GLuint m_triNormalsVBO;
+    GLsizei m_triNormalsVertexCount; // number of vertices (2 per triangle)
+    // Debug: triangle edges (from triangulation)
+    GLuint m_triEdgesVAO;
+    GLuint m_triEdgesVBO;
+    GLsizei m_triEdgesVertexCount; // number of vertices (2 per edge * 3 per tri)
     bool m_drawFacetNormals;
     float m_normalLengthScale; // relative to model extent
+    bool m_cullingEnabled; // back-face culling toggle
     RenderMode m_renderMode;
     size_t m_indexCount;     // Number of triangle indices for rendering
     size_t m_edgeIndexCount; // Number of edge indices for wireframe

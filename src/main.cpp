@@ -580,6 +580,14 @@ private:
                 std::cout << "OpenMP not available in this build" << std::endl;
 #endif
                 break;
+            case SDL_SCANCODE_C: {
+                bool enabled = true;
+                // Query current from renderer; we track it via renderer state
+                enabled = !m_renderer.getCullingEnabled();
+                m_renderer.setCullingEnabled(enabled);
+                std::cout << "Back-face culling: " << (enabled ? "ON" : "OFF") << std::endl;
+                break;
+            }
             case SDL_SCANCODE_R:
                 std::cout << "R pressed - Resetting view" << std::endl;
                 m_rotationX = 30.0f;
@@ -1104,7 +1112,8 @@ int main(int argc, char* argv[]) {
     std::cout << "  K: Toggle kinetic rotate/zoom (inertia; no pan)" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
-    std::cout << "  N: Toggle facet normals debug" << std::endl;
+    std::cout << "  C: Toggle back-face culling" << std::endl;
+    std::cout << "  N: Toggle normals debug (facet=magenta, triangle=cyan)" << std::endl;
     std::cout << "  W: Wireframe mode" << std::endl;
     std::cout << "  S: Solid mode" << std::endl;
     std::cout << "  R: Reset view" << std::endl;

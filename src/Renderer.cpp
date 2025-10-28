@@ -8,8 +8,11 @@
 Renderer::Renderer()
     : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0),
       m_shaderProgramSolid(0), m_shaderProgramWireframe(0),
-      m_normalsVAO(0), m_normalsVBO(0), m_shaderProgramNormals(0),
-      m_normalsVertexCount(0), m_drawFacetNormals(false), m_normalLengthScale(0.03f),
+    m_normalsVAO(0), m_normalsVBO(0), m_shaderProgramNormals(0),
+    m_normalsVertexCount(0),
+    m_triNormalsVAO(0), m_triNormalsVBO(0), m_triNormalsVertexCount(0),
+    m_triEdgesVAO(0), m_triEdgesVBO(0), m_triEdgesVertexCount(0),
+    m_drawFacetNormals(false), m_normalLengthScale(0.03f), m_cullingEnabled(false),
       m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
 }
 
@@ -23,6 +26,10 @@ Renderer::~Renderer() {
     if (m_normalsVAO) glDeleteVertexArrays(1, &m_normalsVAO);
     if (m_normalsVBO) glDeleteBuffers(1, &m_normalsVBO);
     if (m_shaderProgramNormals) glDeleteProgram(m_shaderProgramNormals);
+    if (m_triNormalsVAO) glDeleteVertexArrays(1, &m_triNormalsVAO);
+    if (m_triNormalsVBO) glDeleteBuffers(1, &m_triNormalsVBO);
+    if (m_triEdgesVAO) glDeleteVertexArrays(1, &m_triEdgesVAO);
+    if (m_triEdgesVBO) glDeleteBuffers(1, &m_triEdgesVBO);
 }
 
 bool Renderer::initialize() {
@@ -50,6 +57,10 @@ void Renderer::setupMesh() {
     if (m_edgeEBO) glDeleteBuffers(1, &m_edgeEBO);
     if (m_normalsVAO) { glDeleteVertexArrays(1, &m_normalsVAO); m_normalsVAO = 0; }
     if (m_normalsVBO) { glDeleteBuffers(1, &m_normalsVBO); m_normalsVBO = 0; }
+    if (m_triNormalsVAO) { glDeleteVertexArrays(1, &m_triNormalsVAO); m_triNormalsVAO = 0; }
+    if (m_triNormalsVBO) { glDeleteBuffers(1, &m_triNormalsVBO); m_triNormalsVBO = 0; }
+    if (m_triEdgesVAO) { glDeleteVertexArrays(1, &m_triEdgesVAO); m_triEdgesVAO = 0; }
+    if (m_triEdgesVBO) { glDeleteBuffers(1, &m_triEdgesVBO); m_triEdgesVBO = 0; }
     
     // Generate buffers
     glGenVertexArrays(1, &m_VAO);
@@ -66,42 +77,87 @@ void Renderer::setupMesh() {
     
     // Convert facets to triangle indices using earcut for proper triangulation
     std::vector<unsigned int> triangleIndices;
-    
+
     for (const auto& facet : m_mesh->facets) {
-        if (facet.indices.size() < 3) {
-            continue; // Skip degenerate facets
+        const size_t n = facet.indices.size();
+        if (n < 3) continue; // Skip degenerate facets
+
+        // Compute a robust facet normal via Newell's method
+        glm::vec3 facetNormal(0.0f);
+        for (size_t i = 0; i < n; ++i) {
+            const glm::vec3& v1 = m_mesh->vertices[facet.indices[i]].position;
+            const glm::vec3& v2 = m_mesh->vertices[facet.indices[(i + 1) % n]].position;
+            facetNormal.x += (v1.y - v2.y) * (v1.z + v2.z);
+            facetNormal.y += (v1.z - v2.z) * (v1.x + v2.x);
+            facetNormal.z += (v1.x - v2.x) * (v1.y + v2.y);
         }
-        
-        // For triangles, just add the indices directly
-        if (facet.indices.size() == 3) {
-            triangleIndices.push_back(facet.indices[0]);
-            triangleIndices.push_back(facet.indices[1]);
-            triangleIndices.push_back(facet.indices[2]);
+        if (glm::length(facetNormal) < 1e-8f) {
+            // Fallback to first triangle cross if Newell is degenerate
+            const glm::vec3 a = m_mesh->vertices[facet.indices[0]].position;
+            const glm::vec3 b = m_mesh->vertices[facet.indices[1]].position;
+            const glm::vec3 c = m_mesh->vertices[facet.indices[2]].position;
+            facetNormal = glm::cross(b - a, c - a);
+        }
+        if (glm::length(facetNormal) > 1e-8f) facetNormal = glm::normalize(facetNormal);
+
+        auto appendOrientedTri = [&](unsigned int i0, unsigned int i1, unsigned int i2) {
+            const glm::vec3& p0 = m_mesh->vertices[i0].position;
+            const glm::vec3& p1 = m_mesh->vertices[i1].position;
+            const glm::vec3& p2 = m_mesh->vertices[i2].position;
+            glm::vec3 triN = glm::cross(p1 - p0, p2 - p0);
+            if (glm::length(triN) > 1e-12f && glm::dot(triN, facetNormal) < 0.0f) {
+                // Flip winding to match facet normal
+                std::swap(i1, i2);
+            }
+            triangleIndices.push_back(i0);
+            triangleIndices.push_back(i1);
+            triangleIndices.push_back(i2);
+        };
+
+        if (n == 3) {
+            appendOrientedTri(facet.indices[0], facet.indices[1], facet.indices[2]);
         } else {
-            // For polygons with more than 3 vertices, use earcut for proper triangulation
-            // Earcut expects a vector of polygons, where each polygon is a vector of points
-            // Each point is an array-like structure with at least 2 coordinates
-            
-            // Build the polygon for earcut (2D projection - use first two components)
+            // For polygons with more than 3 vertices, triangulate by projecting onto the facet plane
             using Point = std::array<double, 2>;
             std::vector<std::vector<Point>> polygon;
             std::vector<Point> ring;
-            
+            ring.reserve(n);
+
+            // Build a local 2D basis on the facet plane
+            // Choose an up vector not parallel to facetNormal
+            glm::vec3 up = (std::abs(facetNormal.z) < 0.9f) ? glm::vec3(0,0,1) : glm::vec3(0,1,0);
+            glm::vec3 tangent = glm::normalize(glm::cross(up, facetNormal));
+            glm::vec3 bitangent = glm::normalize(glm::cross(facetNormal, tangent));
+            // Use centroid as origin for numerical stability
+            glm::vec3 centroid(0.0f);
+            for (unsigned int idx : facet.indices) centroid += m_mesh->vertices[idx].position;
+            centroid /= static_cast<float>(n);
             for (unsigned int idx : facet.indices) {
-                const auto& pos = m_mesh->vertices[idx].position;
-                // Project to 2D using X and Y coordinates
-                // TODO: For better results, project onto the plane defined by the facet normal
-                ring.push_back({static_cast<double>(pos.x), static_cast<double>(pos.y)});
+                glm::vec3 p = m_mesh->vertices[idx].position - centroid;
+                double u = static_cast<double>(glm::dot(p, tangent));
+                double v = static_cast<double>(glm::dot(p, bitangent));
+                ring.push_back({u, v});
             }
-            
             polygon.push_back(ring);
-            
-            // Run earcut triangulation
+
             std::vector<unsigned int> localIndices = mapbox::earcut<unsigned int>(polygon);
-            
-            // Add the triangulated indices (offset by the facet's base indices)
-            for (unsigned int localIdx : localIndices) {
-                triangleIndices.push_back(facet.indices[localIdx]);
+
+            if (localIndices.size() < (n - 2) * 3) {
+                // Fallback: simple triangle fan around vertex 0
+                for (size_t j = 1; j + 1 < n; ++j) {
+                    unsigned int gi0 = facet.indices[0];
+                    unsigned int gi1 = facet.indices[j];
+                    unsigned int gi2 = facet.indices[j + 1];
+                    appendOrientedTri(gi0, gi1, gi2);
+                }
+            } else {
+                // Map local earcut indices back to the facet's global vertex indices
+                for (size_t k = 0; k + 2 < localIndices.size(); k += 3) {
+                    unsigned int gi0 = facet.indices[localIndices[k + 0]];
+                    unsigned int gi1 = facet.indices[localIndices[k + 1]];
+                    unsigned int gi2 = facet.indices[localIndices[k + 2]];
+                    appendOrientedTri(gi0, gi1, gi2);
+                }
             }
         }
     }
@@ -156,6 +212,57 @@ void Renderer::setupMesh() {
 
     // Build facet normals debug geometry
     setupFacetNormals();
+
+    // Build triangle normals debug geometry (from triangulated indices)
+    m_triNormalsVertexCount = 0;
+    m_triEdgesVertexCount = 0;
+    if (!triangleIndices.empty()) {
+        float length = glm::max(0.001f, m_mesh->getMaxExtent() * m_normalLengthScale);
+        std::vector<glm::vec3> triLineVerts;
+        std::vector<glm::vec3> triEdgeVerts;
+        triLineVerts.reserve((triangleIndices.size() / 3) * 2);
+        triEdgeVerts.reserve((triangleIndices.size() / 3) * 6);
+        for (size_t i = 0; i + 2 < triangleIndices.size(); i += 3) {
+            unsigned int i0 = triangleIndices[i + 0];
+            unsigned int i1 = triangleIndices[i + 1];
+            unsigned int i2 = triangleIndices[i + 2];
+            const glm::vec3& p0 = m_mesh->vertices[i0].position;
+            const glm::vec3& p1 = m_mesh->vertices[i1].position;
+            const glm::vec3& p2 = m_mesh->vertices[i2].position;
+            glm::vec3 triN = glm::cross(p1 - p0, p2 - p0);
+            float ln = glm::length(triN);
+            if (ln > 1e-12f) triN /= ln; else continue;
+            glm::vec3 centroid = (p0 + p1 + p2) / 3.0f;
+            triLineVerts.push_back(centroid);
+            triLineVerts.push_back(centroid + triN * length);
+            // Triangle edges (3 segments)
+            triEdgeVerts.push_back(p0); triEdgeVerts.push_back(p1);
+            triEdgeVerts.push_back(p1); triEdgeVerts.push_back(p2);
+            triEdgeVerts.push_back(p2); triEdgeVerts.push_back(p0);
+        }
+        if (!triLineVerts.empty()) {
+            glGenVertexArrays(1, &m_triNormalsVAO);
+            glGenBuffers(1, &m_triNormalsVBO);
+            glBindVertexArray(m_triNormalsVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, m_triNormalsVBO);
+            glBufferData(GL_ARRAY_BUFFER, triLineVerts.size() * sizeof(glm::vec3), triLineVerts.data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+            glBindVertexArray(0);
+            m_triNormalsVertexCount = static_cast<GLsizei>(triLineVerts.size());
+        }
+        if (!triEdgeVerts.empty()) {
+            glGenVertexArrays(1, &m_triEdgesVAO);
+            glGenBuffers(1, &m_triEdgesVBO);
+            glBindVertexArray(m_triEdgesVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, m_triEdgesVBO);
+            glBufferData(GL_ARRAY_BUFFER, triEdgeVerts.size() * sizeof(glm::vec3), triEdgeVerts.data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+            glBindVertexArray(0);
+            m_triEdgesVertexCount = static_cast<GLsizei>(triEdgeVerts.size());
+        }
+    }
 }
 
 void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
@@ -191,8 +298,12 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
         // Solid: draw triangles
         glDisable(GL_LINE_SMOOTH);
         glDisable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        if (m_cullingEnabled) {
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+        } else {
+            glDisable(GL_CULL_FACE);
+        }
         
         // Bind the triangle buffer and draw
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
@@ -201,8 +312,8 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     
     glBindVertexArray(0);
 
-    // Optional: draw facet normals for debugging
-    if (m_drawFacetNormals && m_shaderProgramNormals && m_normalsVAO && m_normalsVertexCount > 0) {
+    // Optional: draw normals for debugging
+    if (m_drawFacetNormals && m_shaderProgramNormals) {
         GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
         // Draw on top so you can always see them
         glDisable(GL_DEPTH_TEST);
@@ -214,12 +325,28 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        // Magenta for visibility
-        glUniform3f(colorLoc, 1.0f, 0.0f, 1.0f);
-        glBindVertexArray(m_normalsVAO);
         glLineWidth(1.5f);
-        glDrawArrays(GL_LINES, 0, m_normalsVertexCount);
-        glBindVertexArray(0);
+        // Facet normals: magenta
+        if (m_normalsVAO && m_normalsVertexCount > 0) {
+            glUniform3f(colorLoc, 1.0f, 0.0f, 1.0f);
+            glBindVertexArray(m_normalsVAO);
+            glDrawArrays(GL_LINES, 0, m_normalsVertexCount);
+            glBindVertexArray(0);
+        }
+        // Triangle normals: cyan
+        if (m_triNormalsVAO && m_triNormalsVertexCount > 0) {
+            glUniform3f(colorLoc, 0.0f, 1.0f, 1.0f);
+            glBindVertexArray(m_triNormalsVAO);
+            glDrawArrays(GL_LINES, 0, m_triNormalsVertexCount);
+            glBindVertexArray(0);
+        }
+        // Triangle edges: yellow
+        if (m_triEdgesVAO && m_triEdgesVertexCount > 0) {
+            glUniform3f(colorLoc, 1.0f, 1.0f, 0.0f);
+            glBindVertexArray(m_triEdgesVAO);
+            glDrawArrays(GL_LINES, 0, m_triEdgesVertexCount);
+            glBindVertexArray(0);
+        }
         if (wasDepth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     }
 }
