@@ -1,9 +1,19 @@
 #include "XMLLoader.h"
 #include <pugixml.hpp>
+#include <archive.h>
+#include <archive_entry.h>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
+#include <cstring>
 
 std::unique_ptr<Mesh> XMLLoader::load(const std::string& filename) {
+    // Check if it's a zip file
+    if (isZipFile(filename)) {
+        return loadFromZip(filename);
+    }
+    
+    // Otherwise load as regular XML file
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_file(filename.c_str());
     
@@ -13,6 +23,10 @@ std::unique_ptr<Mesh> XMLLoader::load(const std::string& filename) {
         return nullptr;
     }
     
+    return loadFromXMLString(doc);
+}
+
+std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc) {
     auto mesh = std::make_unique<Mesh>();
     
     // Navigate to Geometry node
@@ -141,4 +155,92 @@ bool XMLLoader::isXMLGeometry(const std::string& filename) {
         return (ext == ".xml" || ext == ".XML");
     }
     return false;
+}
+
+bool XMLLoader::isZipFile(const std::string& filename) {
+    size_t dotPos = filename.find_last_of('.');
+    if (dotPos != std::string::npos) {
+        std::string ext = filename.substr(dotPos);
+        return (ext == ".zip" || ext == ".ZIP");
+    }
+    return false;
+}
+
+std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename) {
+    std::cout << "Loading XML from zip archive: " << filename << std::endl;
+    
+    struct archive* a = archive_read_new();
+    archive_read_support_filter_all(a);
+    archive_read_support_format_all(a);
+    
+    int r = archive_read_open_filename(a, filename.c_str(), 10240);
+    if (r != ARCHIVE_OK) {
+        std::cerr << "Failed to open zip archive: " << archive_error_string(a) << std::endl;
+        archive_read_free(a);
+        return nullptr;
+    }
+    
+    std::unique_ptr<Mesh> mesh = nullptr;
+    struct archive_entry* entry;
+    bool foundXML = false;
+    
+    // Iterate through entries in the archive
+    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+        const char* entryName = archive_entry_pathname(entry);
+        std::string name(entryName);
+        
+        // Check if this is an XML file
+        size_t dotPos = name.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            std::string ext = name.substr(dotPos);
+            if (ext == ".xml" || ext == ".XML") {
+                if (foundXML) {
+                    std::cerr << "Warning: Multiple XML files found in zip. Using first one." << std::endl;
+                    archive_read_data_skip(a);
+                    continue;
+                }
+                
+                foundXML = true;
+                std::cout << "Found XML file in archive: " << name << std::endl;
+                
+                // Read the entire file content
+                size_t size = archive_entry_size(entry);
+                std::vector<char> buffer(size + 1);
+                
+                la_ssize_t bytes_read = archive_read_data(a, buffer.data(), size);
+                if (bytes_read < 0) {
+                    std::cerr << "Error reading from archive: " << archive_error_string(a) << std::endl;
+                    archive_read_free(a);
+                    return nullptr;
+                }
+                
+                buffer[bytes_read] = '\0';
+                
+                // Parse the XML from the buffer
+                pugi::xml_document doc;
+                pugi::xml_parse_result result = doc.load_buffer(buffer.data(), bytes_read);
+                
+                if (!result) {
+                    std::cerr << "Failed to parse XML from zip: " << result.description() << std::endl;
+                    archive_read_free(a);
+                    return nullptr;
+                }
+                
+                mesh = loadFromXMLString(doc);
+                continue;
+            }
+        }
+        
+        // Skip non-XML files
+        archive_read_data_skip(a);
+    }
+    
+    archive_read_free(a);
+    
+    if (!foundXML) {
+        std::cerr << "No XML file found in zip archive" << std::endl;
+        return nullptr;
+    }
+    
+    return mesh;
 }

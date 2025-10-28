@@ -778,6 +778,9 @@ private:
             std::string ext = path.substr(dotPos);
             if (ext == ".xml" || ext == ".XML") {
                 mesh = XMLLoader::load(path);
+            } else if (ext == ".zip" || ext == ".ZIP") {
+                // Zip files should contain XML, use XMLLoader
+                mesh = XMLLoader::load(path);
             } else {
                 mesh = STLLoader::load(path);
             }
@@ -810,7 +813,7 @@ private:
         }
         nfdchar_t* outPath = nullptr;
         nfdfilteritem_t filters[2] = { 
-            { "Geometry Files", "stl,xml" },
+            { "Geometry Files", "stl,xml,zip" },
             { "All Files", "*" }
         };
         nfdresult_t result = NFD_OpenDialog(&outPath, filters, 2, nullptr);

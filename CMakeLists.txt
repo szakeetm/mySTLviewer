@@ -10,6 +10,7 @@ find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(nfd CONFIG REQUIRED)
 find_package(pugixml CONFIG REQUIRED)
+find_package(LibArchive REQUIRED)
 find_path(EARCUT_HPP_INCLUDE_DIRS "mapbox/earcut.hpp")
 find_package(OpenMP)
 
@@ -39,6 +40,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glm::glm
     nfd::nfd
     pugixml::pugixml
+    LibArchive::LibArchive
 )
 
 # Include directories

@@ -11,6 +11,10 @@
     {
       "name": "pugixml",
       "features": ["compact"]
+    },
+    {
+      "name": "libarchive",
+      "features": ["zstd", "lzma"]
     }
   ]
 }
