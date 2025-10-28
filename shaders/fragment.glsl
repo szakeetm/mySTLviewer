@@ -10,7 +10,7 @@ uniform mat4 view;
 void main()
 {
     // Light direction in view space
-    vec3 lightDirVS = normalize((view * vec4(0.5, 1.0, 0.5, 0.0)).xyz);
+    vec3 lightDirVS = normalize((view * vec4(0.0, -1.0, 0.0, 0.0)).xyz);
     vec3 norm = normalize(NormalVS);
     
     // Ambient + Diffuse
