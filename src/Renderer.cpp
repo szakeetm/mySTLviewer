@@ -1,9 +1,10 @@
-#include "Renderer.h"
+﻿#include "Renderer.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <mapbox/earcut.hpp>
+#include <array>
 
 Renderer::Renderer()
         : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0),
@@ -106,7 +107,7 @@ void Renderer::setupMesh() {
             facetNormal.z += (v1.x - v2.x) * (v1.y + v2.y);
         }
         if (glm::length(facetNormal) < 1e-8f) {
-            // Fallback to first triangle cross if Newell is degenerate
+            // Fallback to first triangle cross if Newell's degenerate
             const glm::vec3 a = m_mesh->vertices[facet.indices[0]].position;
             const glm::vec3 b = m_mesh->vertices[facet.indices[1]].position;
             const glm::vec3 c = m_mesh->vertices[facet.indices[2]].position;
@@ -154,7 +155,7 @@ void Renderer::setupMesh() {
                 glm::vec3 p = m_mesh->vertices[idx].position - centroid;
                 double u = static_cast<double>(glm::dot(p, tangent));
                 double v = static_cast<double>(glm::dot(p, bitangent));
-                ring.push_back({u, v});
+                ring.push_back(Point{u, v});
             }
             polygon.push_back(ring);
 
