@@ -82,12 +82,19 @@ void Renderer::setupMesh() {
     
     // Convert facets to triangle indices using earcut for proper triangulation
     std::vector<unsigned int> triangleIndices;
-    struct SolidVertex { glm::vec3 position; glm::vec3 facetNormal; };
+    struct SolidVertex { glm::vec3 position; glm::vec3 facetNormal; glm::vec3 facetCenter; };
     std::vector<SolidVertex> solidVertices;
 
     for (const auto& facet : m_mesh->facets) {
         const size_t n = facet.indices.size();
         if (n < 3) continue; // Skip degenerate facets
+
+        // Compute facet centroid
+        glm::vec3 facetCenter(0.0f);
+        for (unsigned int idx : facet.indices) {
+            facetCenter += m_mesh->vertices[idx].position;
+        }
+        facetCenter /= static_cast<float>(n);
 
         // Compute a robust facet normal via Newell's method
         glm::vec3 facetNormal(0.0f);
@@ -119,10 +126,10 @@ void Renderer::setupMesh() {
             triangleIndices.push_back(i0);
             triangleIndices.push_back(i1);
             triangleIndices.push_back(i2);
-            // Also push de-indexed solid vertices carrying the facet normal (constant per triangle)
-            solidVertices.push_back({ m_mesh->vertices[i0].position, facetNormal });
-            solidVertices.push_back({ m_mesh->vertices[i1].position, facetNormal });
-            solidVertices.push_back({ m_mesh->vertices[i2].position, facetNormal });
+            // Push de-indexed solid vertices with facet normal AND facet center
+            solidVertices.push_back({ m_mesh->vertices[i0].position, facetNormal, facetCenter });
+            solidVertices.push_back({ m_mesh->vertices[i1].position, facetNormal, facetCenter });
+            solidVertices.push_back({ m_mesh->vertices[i2].position, facetNormal, facetCenter });
         };
 
         if (n == 3) {
@@ -275,7 +282,7 @@ void Renderer::setupMesh() {
         }
     }
 
-    // Build solid-mode VBO/VAO (positions + facet normals), draw with glDrawArrays
+    // Build solid-mode VBO/VAO (positions + facet normals + facet centers), draw with glDrawArrays
     m_solidVertexCount = static_cast<GLsizei>(solidVertices.size());
     if (m_solidVertexCount > 0) {
         glGenVertexArrays(1, &m_solidVAO);
@@ -286,9 +293,12 @@ void Renderer::setupMesh() {
         // position at location 0
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SolidVertex), (void*)offsetof(SolidVertex, position));
         glEnableVertexAttribArray(0);
-        // facet normal at location 1 (reuse aNormal channel)
+        // facet normal at location 1
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SolidVertex), (void*)offsetof(SolidVertex, facetNormal));
         glEnableVertexAttribArray(1);
+        // facet center at location 2
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(SolidVertex), (void*)offsetof(SolidVertex, facetCenter));
+        glEnableVertexAttribArray(2);
         glBindVertexArray(0);
     }
 }

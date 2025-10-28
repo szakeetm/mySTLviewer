@@ -3,28 +3,28 @@
 layout (triangles) in;
 layout (triangle_strip, max_vertices = 3) out;
 
-// Inputs from vertex shader
-in vec3 FragPos[];    // world space (not used here)
-in vec3 WorldPos[];   // view space positions
-flat in vec3 Normal[]; // world-space facet normals passed per-vertex (identical for the triangle)
+in vec3 WorldPos[];
+flat in vec3 Normal[];
+flat in vec3 FacetCenter[];
 
 uniform mat4 view;
+uniform mat4 model;
 
-// Flat outputs to fragment shader
-flat out vec3 FaceNormalVS;   // face normal in view space
-flat out vec3 FaceCenterVS;   // face center in view space
+flat out vec3 NormalVS;
+flat out vec3 FaceCenterVS;
 
 void main() {
-    // Use the provided facet normal, transform to view space
-    vec3 nvs = normalize((view * vec4(Normal[0], 0.0)).xyz);
-    // Center in view space
-    vec3 centerVS = (WorldPos[0] + WorldPos[1] + WorldPos[2]) / 3.0;
-
-    // Emit the triangle with flat varyings
-    FaceNormalVS = nvs;
-    FaceCenterVS = centerVS;
-    gl_Position = gl_in[0].gl_Position; EmitVertex();
-    gl_Position = gl_in[1].gl_Position; EmitVertex();
-    gl_Position = gl_in[2].gl_Position; EmitVertex();
+    // Transform facet normal to view space
+    vec3 normalWorld = mat3(transpose(inverse(model))) * Normal[0];
+    NormalVS = normalize((view * vec4(normalWorld, 0.0)).xyz);
+    
+    // Transform facet center to view space
+    FaceCenterVS = vec3(view * model * vec4(FacetCenter[0], 1.0));
+    
+    // Emit triangle
+    for (int i = 0; i < 3; i++) {
+        gl_Position = gl_in[i].gl_Position;
+        EmitVertex();
+    }
     EndPrimitive();
 }
