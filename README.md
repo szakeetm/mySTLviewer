@@ -7,10 +7,18 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 ## Features
 
 - **STL File Support**: Reads both ASCII and binary STL files
+- **XML/ZIP Geometry Files**: Supports XML-based geometry definitions and ZIP archives containing XML
 - **Modern OpenGL**: Uses OpenGL 3.3+ with programmable shaders
-- **Dual Render Modes**: Switch between solid and wireframe rendering
+- **Flexible Rendering Modes**: Independent toggles for solid fill and wireframe overlay
+  - Solid-only mode with flat per-facet shading
+  - Wireframe-only mode (white lines)
+  - Combined mode (solid with black wireframe overlay)
+- **Advanced Triangulation**: Robust polygon triangulation with plane projection and automatic fallback
+- **Back-face Culling**: Optional culling toggle (default: OFF)
+- **Debug Visualization**: Toggle overlays for facet normals, triangle normals, and triangle edges
 - **Orthogonal Projection**: Clean orthographic view of 3D models
 - **Interactive Controls**: Mouse-based rotation, pan, zoom, and custom rotation pivot
+- **Kinetic Motion**: Optional inertial rotation and zoom for smooth interaction
 - **Startup File Dialog**: Native file chooser on launch (argument optional)
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
 
@@ -68,14 +76,16 @@ On startup, a native file dialog will prompt you to select an STL file. You can 
 ### Command Line
 
 ```bash
-mySTLViewer [stl_file]
+mySTLViewer [geometry_file]
 ```
 
-- If `[stl_file]` is provided, the viewer opens it directly.
-- If omitted, a native file dialog appears to select an STL file.
+- If `[geometry_file]` is provided, the viewer opens it directly (supports `.stl`, `.xml`, `.zip`)
+- If omitted, a native file dialog appears to select a geometry file
+- When launched by double-clicking (e.g., in macOS Finder), working directory automatically changes to executable location for proper shader loading
 
 ### Controls
 
+#### Mouse Controls
 - **Right Mouse Button + Drag**: Rotate the model
 - **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
 - **Middle Mouse Button + Drag**: Pan the view
@@ -85,27 +95,42 @@ mySTLViewer [stl_file]
 - **Z + Left Mouse Drag**: Zoom in/out (alternative to mouse wheel)
 - **D + Left Mouse Drag**: Pan the view (alternative to middle mouse)
 
-#### Other Controls
-- **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
-- **Ctrl/Cmd + O**: Open file dialog (Load)
-- **Ctrl/Cmd + Q**: Quit application
-- **M**: Toggle OpenMP-based pivot picking (if enabled in the build)
-- **W**: Switch to wireframe mode
-- **S**: Switch to solid mode
-- **V**: Toggle VSync
+#### Keyboard Shortcuts
+
+##### Rendering Modes
+- **W**: Toggle wireframe overlay (white when alone, black when overlaid on solid)
+- **S**: Toggle solid fill (flat per-facet shading)
+- **C**: Toggle back-face culling (default: OFF)
+- **N**: Toggle debug normals overlay
+  - Facet normals (magenta lines)
+  - Triangle normals (cyan lines)
+  - Triangle edges from triangulation (yellow lines)
+
+##### View Controls
 - **R**: Reset view to default position and clear custom pivot
+- **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
+- **V**: Toggle VSync
+
+##### File Operations
+- **Ctrl/Cmd + O**: Open file dialog to load a new geometry file
 - **Q** or **ESC**: Quit application
+- **Ctrl/Cmd + Q**: Quit application
+
+##### Performance
+- **M**: Toggle OpenMP-based pivot picking (if enabled in build)
 
 #### Custom Pivot Notes
-#### Kinetic Controls
-- Disabled by default; toggle with the K key.
-- Rotation inertia continues after you release the right mouse button, based on your last drag velocity.
-- Zoom inertia continues briefly after a mouse wheel scroll.
-- Panning is never affected by kinetic motion.
+- When a pivot is selected, rotations occur around that point; otherwise the model rotates around its center
+- If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically
+- Selecting a pivot does not shift the view; the chosen point stays under the cursor
+- Colored axes (RGB = XYZ) appear at the selected pivot point
 
-- When a pivot is selected, rotations occur around that point; otherwise the model rotates around its center.
-- If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically.
-- Selecting a pivot does not shift the view; the chosen point stays under the cursor.
+#### Kinetic Controls
+- Disabled by default; toggle with the **K** key
+- Rotation inertia continues after you release the right mouse button, based on your last drag velocity
+- Zoom inertia continues briefly after a mouse wheel scroll
+- Panning is never affected by kinetic motion
+- Adjustable damping keeps motion smooth and natural
 
 ## Project Structure
 
@@ -117,11 +142,13 @@ mySTLViewer/
 ├── src/
 │   ├── main.cpp            # Application entry point and SDL3 setup
 │   ├── STLLoader.h/.cpp    # STL file parser (binary & ASCII)
+│   ├── XMLLoader.h/.cpp    # XML/ZIP geometry file parser
 │   ├── Renderer.h/.cpp     # OpenGL rendering engine
 │   └── Mesh.h              # Mesh data structure
 └── shaders/
     ├── vertex.glsl         # Vertex shader
-    └── fragment.glsl       # Fragment shader with lighting
+    ├── fragment.glsl       # Fragment shader with flat shading
+    └── solid.geom          # Geometry shader for per-facet flat shading
 ```
 
 ## Dependencies
@@ -132,8 +159,10 @@ The project uses the following libraries managed by vcpkg:
 - **glad**: OpenGL function loader
 - **glm**: OpenGL Mathematics library for matrix operations
 - **nativefiledialog-extended (nfd)**: Native file open dialog on all platforms
+- **libarchive**: ZIP archive extraction for XML geometry files
+- **pugixml**: XML parsing for geometry definitions
 - **OpenMP (optional)**: Speeds up pivot picking by parallelizing the nearest-vertex search
-    - On macOS with AppleClang, install `libomp` via Homebrew; the build auto-detects and links it.
+    - On macOS with AppleClang, install `libomp` via Homebrew; the build auto-detects and links it
 
 ## Technical Details
 
@@ -143,13 +172,31 @@ The project uses the following libraries managed by vcpkg:
 - **ASCII STL**: Human-readable format
 - Auto-detection of file format
 
+### XML Geometry Support
+
+- **XML files**: Custom XML-based geometry definitions with facet data
+- **ZIP archives**: Automatic extraction and parsing of XML files within ZIP containers
+- Support for complex polygons with automatic triangulation
+
 ### Rendering Features
 
+- **Independent Rendering Modes**:
+  - Solid fill with true flat per-facet shading (using geometry shader)
+  - Wireframe overlay (adaptive color: white standalone, black overlay)
+  - Both modes can be active simultaneously
+- **Advanced Triangulation**:
+  - Plane-projected polygon triangulation using earcut
+  - Automatic triangle orientation correction to match facet normals
+  - Triangle fan fallback for degenerate cases
+- **Debug Visualization**:
+  - Facet normals (magenta lines from facet centroids)
+  - Triangle normals (cyan lines from triangle centroids)
+  - Triangle edges (yellow lines showing triangulation structure)
 - Orthogonal projection for accurate size representation
-- Phong-like lighting with ambient and diffuse components
-- Edge highlighting for better depth perception
+- View-space lighting with ambient and diffuse components
 - Automatic model centering and scaling
-- Back-face culling for performance
+- Optional back-face culling (default: OFF)
+- Custom rotation pivot with visual axes (RGB = XYZ)
 
 ### OpenGL Features
 
@@ -158,6 +205,9 @@ The project uses the following libraries managed by vcpkg:
 - Vertex Buffer Objects (VBO)
 - Element Buffer Objects (EBO)
 - GLSL Shaders (version 330)
+- Geometry shader for true per-facet flat shading
+- Multi-pass rendering (solid + wireframe overlay)
+- Depth testing and back-face culling support
 
 ## Troubleshooting
 
@@ -176,7 +226,13 @@ Ensure your graphics drivers are up to date and support OpenGL 3.3 or higher. Th
 
 ### Shader compilation errors
 
-Check that the `shaders/` directory is copied to your build directory. CMake should handle this automatically.
+Check that the `shaders/` directory is in the same location as the executable. When double-clicking the executable in macOS Finder, the working directory is automatically adjusted to the executable's location. CMake copies shaders to the build directory automatically.
+
+### Model appears transparent or has missing faces
+
+- Toggle back-face culling with **C** (default is OFF)
+- The triangulation system automatically corrects triangle orientation to match facet normals
+- Use **N** to visualize facet normals (magenta) and verify geometry
 
 ### Enable OpenMP (parallel pivot picking) on macOS
 
@@ -210,9 +266,11 @@ This project is provided as-is for educational and personal use.
 
 Potential features for future development:
 
-- Support for multiple file formats (OBJ, PLY)
+- Support for additional file formats (OBJ, PLY, 3MF)
 - Model measurements and analysis tools
-- Material/color customization
+- Material/color customization per facet
 - Screenshot/export functionality
 - Model slicing preview
-- Performance optimizations for large models
+- Performance optimizations for very large models (LOD, instancing)
+- Animation/turntable mode
+- Section plane cutting tools
