@@ -5,13 +5,14 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Renderer::Renderer()
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME), m_indexCount(0) {
+    : m_VAO(0), m_VBO(0), m_EBO(0), m_edgeEBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
 }
 
 Renderer::~Renderer() {
     if (m_VAO) glDeleteVertexArrays(1, &m_VAO);
     if (m_VBO) glDeleteBuffers(1, &m_VBO);
     if (m_EBO) glDeleteBuffers(1, &m_EBO);
+    if (m_edgeEBO) glDeleteBuffers(1, &m_edgeEBO);
     if (m_shaderProgramSolid) glDeleteProgram(m_shaderProgramSolid);
     if (m_shaderProgramWireframe) glDeleteProgram(m_shaderProgramWireframe);
 }
@@ -38,11 +39,13 @@ void Renderer::setupMesh() {
     if (m_VAO) glDeleteVertexArrays(1, &m_VAO);
     if (m_VBO) glDeleteBuffers(1, &m_VBO);
     if (m_EBO) glDeleteBuffers(1, &m_EBO);
+    if (m_edgeEBO) glDeleteBuffers(1, &m_edgeEBO);
     
     // Generate buffers
     glGenVertexArrays(1, &m_VAO);
     glGenBuffers(1, &m_VBO);
     glGenBuffers(1, &m_EBO);
+    glGenBuffers(1, &m_edgeEBO);
     
     glBindVertexArray(m_VAO);
     
@@ -51,7 +54,7 @@ void Renderer::setupMesh() {
     glBufferData(GL_ARRAY_BUFFER, m_mesh->vertices.size() * sizeof(Vertex),
                  m_mesh->vertices.data(), GL_STATIC_DRAW);
     
-    // Convert facets to triangle indices for OpenGL
+    // Convert facets to triangle indices for OpenGL (solid mode)
     // For now, we triangulate by simple fan triangulation (works for convex polygons)
     std::vector<unsigned int> triangleIndices;
     for (const auto& facet : m_mesh->facets) {
@@ -70,10 +73,34 @@ void Renderer::setupMesh() {
     // Store the number of indices for rendering
     m_indexCount = triangleIndices.size();
     
-    // Upload index data
+    // Upload triangle index data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, triangleIndices.size() * sizeof(unsigned int),
                  triangleIndices.data(), GL_STATIC_DRAW);
+    
+    // Build edge indices for wireframe (original facet edges only, no triangulation)
+    std::vector<unsigned int> edgeIndices;
+    for (const auto& facet : m_mesh->facets) {
+        if (facet.indices.size() < 2) {
+            continue; // Skip degenerate facets
+        }
+        
+        // Create edges around the perimeter of the facet
+        for (size_t i = 0; i < facet.indices.size(); ++i) {
+            edgeIndices.push_back(facet.indices[i]);
+            edgeIndices.push_back(facet.indices[(i + 1) % facet.indices.size()]);
+        }
+    }
+    
+    m_edgeIndexCount = edgeIndices.size();
+    
+    // Upload edge index data to separate buffer
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, edgeIndices.size() * sizeof(unsigned int),
+                 edgeIndices.data(), GL_STATIC_DRAW);
+    
+    // Bind back to triangle EBO as default
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
     
     // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
@@ -111,31 +138,29 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     
-    // Set render mode and related state
+    glBindVertexArray(m_VAO);
+    
     if (m_renderMode == RenderMode::WIREFRAME) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        // Rely on MSAA for anti-aliasing; GL_LINE_SMOOTH can cause dimming on macOS
-        glDisable(GL_LINE_SMOOTH);
+        // Wireframe: draw edges using GL_LINES
         glLineWidth(1.5f);
-        // Use opaque lines; blending can dim appearance on macOS
-        glDisable(GL_BLEND);
-        // Show all edges
         glDisable(GL_CULL_FACE);
+        
+        // Bind the edge buffer and draw lines
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
+        glDrawElements(GL_LINES, m_edgeIndexCount, GL_UNSIGNED_INT, 0);
     } else {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        // Solid: draw triangles
         glDisable(GL_LINE_SMOOTH);
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
+        
+        // Bind the triangle buffer and draw
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
+        glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
     }
     
-    // Draw
-    glBindVertexArray(m_VAO);
-    glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
-    
-    // Reset polygon mode (keep other state as set for the next frame)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 void Renderer::setRenderMode(RenderMode mode) {

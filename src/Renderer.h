@@ -33,9 +33,11 @@ private:
     std::unique_ptr<Mesh> m_mesh;
     GLuint m_VAO;
     GLuint m_VBO;
-    GLuint m_EBO;
+    GLuint m_EBO;       // Element buffer for triangles (solid mode)
+    GLuint m_edgeEBO;   // Element buffer for edges (wireframe mode)
     GLuint m_shaderProgramSolid;
     GLuint m_shaderProgramWireframe;
     RenderMode m_renderMode;
-    size_t m_indexCount; // Number of triangle indices for rendering
+    size_t m_indexCount;     // Number of triangle indices for rendering
+    size_t m_edgeIndexCount; // Number of edge indices for wireframe
 };
