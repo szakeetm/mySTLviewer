@@ -451,44 +451,39 @@ bool Renderer::loadShaders() {
     glDeleteShader(fSolid);
     if (!m_shaderProgramSolid) return false;
 
-    // Create wireframe fragment shader with uniform color
-    const char* wireFrag = R"(
-        #version 330 core
-        uniform vec3 lineColor;
-        out vec4 FragColor;
-        void main() {
-            FragColor = vec4(lineColor, 1.0);
-        }
-    )";
+    // Load wireframe shaders from files
+    std::ifstream wireFragFile("shaders/wireframe.frag");
+    if (!wireFragFile.is_open()) {
+        std::cerr << "Failed to open wireframe fragment shader file" << std::endl;
+        return false;
+    }
+    std::stringstream wireFragStream;
+    wireFragStream << wireFragFile.rdbuf();
+    std::string wireFragCode = wireFragStream.str();
+
     GLuint vWire = compileShader(vertexCode, GL_VERTEX_SHADER);
-    GLuint fWire = compileShader(std::string(wireFrag), GL_FRAGMENT_SHADER);
+    GLuint fWire = compileShader(wireFragCode, GL_FRAGMENT_SHADER);
     if (!vWire || !fWire) return false;
     m_shaderProgramWireframe = linkProgram(vWire, fWire);
     glDeleteShader(vWire);
     glDeleteShader(fWire);
     if (!m_shaderProgramWireframe) return false;
 
-    // Create a simple shader for drawing facet normals as lines with uniform color
-    const char* normalsVS = R"(
-        #version 330 core
-        layout (location = 0) in vec3 aPos;
-        uniform mat4 projection;
-        uniform mat4 view;
-        uniform mat4 model;
-        void main(){
-            gl_Position = projection * view * model * vec4(aPos, 1.0);
-        }
-    )";
-    const char* normalsFS = R"(
-        #version 330 core
-        uniform vec3 color;
-        out vec4 FragColor;
-        void main(){
-            FragColor = vec4(color, 1.0);
-        }
-    )";
-    GLuint vNorm = compileShader(std::string(normalsVS), GL_VERTEX_SHADER);
-    GLuint fNorm = compileShader(std::string(normalsFS), GL_FRAGMENT_SHADER);
+    // Load normals debug shaders from files
+    std::ifstream normalsVSFile("shaders/normals.vert");
+    std::ifstream normalsFSFile("shaders/normals.frag");
+    if (!normalsVSFile.is_open() || !normalsFSFile.is_open()) {
+        std::cerr << "Failed to open normals shader files" << std::endl;
+        return false;
+    }
+    std::stringstream normalsVSStream, normalsFSStream;
+    normalsVSStream << normalsVSFile.rdbuf();
+    normalsFSStream << normalsFSFile.rdbuf();
+    std::string normalsVSCode = normalsVSStream.str();
+    std::string normalsFSCode = normalsFSStream.str();
+
+    GLuint vNorm = compileShader(normalsVSCode, GL_VERTEX_SHADER);
+    GLuint fNorm = compileShader(normalsFSCode, GL_FRAGMENT_SHADER);
     if (!vNorm || !fNorm) return false;
     m_shaderProgramNormals = linkProgram(vNorm, fNorm);
     glDeleteShader(vNorm);
