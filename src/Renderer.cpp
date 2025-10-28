@@ -410,44 +410,21 @@ bool Renderer::loadShaders() {
     // Load solid shaders from files
     std::ifstream vShaderFile("shaders/vertex.glsl");
     std::ifstream fShaderFile("shaders/fragment.glsl");
-    std::ifstream gShaderFile("shaders/solid.geom");
-    if (!vShaderFile.is_open() || !fShaderFile.is_open() || !gShaderFile.is_open()) {
+    if (!vShaderFile.is_open() || !fShaderFile.is_open()) {
         std::cerr << "Failed to open shader files" << std::endl;
         return false;
     }
-    std::stringstream vShaderStream, fShaderStream, gShaderStream;
+    std::stringstream vShaderStream, fShaderStream;
     vShaderStream << vShaderFile.rdbuf();
     fShaderStream << fShaderFile.rdbuf();
-    gShaderStream << gShaderFile.rdbuf();
     std::string vertexCode = vShaderStream.str();
     std::string fragmentCode = fShaderStream.str();
-    std::string geometryCode = gShaderStream.str();
 
     GLuint vSolid = compileShader(vertexCode, GL_VERTEX_SHADER);
     GLuint fSolid = compileShader(fragmentCode, GL_FRAGMENT_SHADER);
-    GLuint gSolid = compileShader(geometryCode, GL_GEOMETRY_SHADER);
-    if (!vSolid || !fSolid || !gSolid) return false;
-    // Link with geometry shader for true flat shading
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vSolid);
-    glAttachShader(program, gSolid);
-    glAttachShader(program, fSolid);
-    glLinkProgram(program);
-    GLint success;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetProgramInfoLog(program, 512, nullptr, infoLog);
-        std::cerr << "Program linking failed (solid with GS):\n" << infoLog << std::endl;
-        glDeleteProgram(program);
-        glDeleteShader(vSolid);
-        glDeleteShader(gSolid);
-        glDeleteShader(fSolid);
-        return false;
-    }
-    m_shaderProgramSolid = program;
+    if (!vSolid || !fSolid) return false;
+    m_shaderProgramSolid = linkProgram(vSolid, fSolid);
     glDeleteShader(vSolid);
-    glDeleteShader(gSolid);
     glDeleteShader(fSolid);
     if (!m_shaderProgramSolid) return false;
 
