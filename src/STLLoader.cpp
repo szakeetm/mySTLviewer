@@ -19,6 +19,8 @@ static void printProgressBar(const std::string& prefix, float fraction) {
     std::cout.flush();
 }
 
+// (Removed outward-winding/normal fix; renderer debug adjusts visualization only.)
+
 std::unique_ptr<Mesh> STLLoader::load(const std::string& filename) {
     if (isBinarySTL(filename)) {
         return loadBinary(filename);
@@ -85,26 +87,36 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
     }
 
     for (uint32_t i = 0; i < numTriangles; ++i) {
-        // Read normal
-        float normal[3];
-        file.read(reinterpret_cast<char*>(normal), 12);
-        glm::vec3 n(normal[0], normal[1], normal[2]);
+        // Skip normal (we'll compute from winding)
+        file.seekg(12, std::ios::cur);
         
-        // Read 3 vertices and create a facet
-        unsigned int baseIndex = mesh->vertices.size();
+        // Read 3 vertices
+        glm::vec3 positions[3];
         for (int j = 0; j < 3; ++j) {
             float vertex[3];
             file.read(reinterpret_cast<char*>(vertex), 12);
-            
+            positions[j] = glm::vec3(vertex[0], vertex[1], vertex[2]);
+        }
+        
+        // Compute normal from winding order
+        glm::vec3 n = glm::cross(positions[1] - positions[0], positions[2] - positions[0]);
+        if (glm::length(n) > 1e-12f) {
+            n = glm::normalize(n);
+        } else {
+            n = glm::vec3(0, 0, 1); // fallback
+        }
+        
+        // Create vertices with computed normal
+        unsigned int baseIndex = mesh->vertices.size();
+        for (int j = 0; j < 3; ++j) {
             Vertex v;
-            v.position = glm::vec3(vertex[0], vertex[1], vertex[2]);
+            v.position = positions[j];
             v.normal = n;
-            
             mesh->vertices.push_back(v);
         }
         
-        // Create a triangular facet with the three vertex indices
-        mesh->facets.push_back(Facet{baseIndex, baseIndex + 1, baseIndex + 2});
+        // Create a triangular facet with flipped winding order
+        mesh->facets.push_back(Facet{baseIndex, baseIndex + 2, baseIndex + 1});
         
         // Skip attribute byte count
         file.seekg(2, std::ios::cur);
@@ -157,7 +169,7 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename) {
             iss >> normalStr; // "normal"
             float nx, ny, nz;
             iss >> nx >> ny >> nz;
-            currentNormal = glm::vec3(nx, ny, nz);
+            // Skip normal, we'll compute from winding
             currentTriangle.clear();
         }
         else if (keyword == "vertex") {
@@ -167,15 +179,23 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename) {
         }
         else if (keyword == "endfacet") {
             if (currentTriangle.size() == 3) {
+                // Compute normal from winding order
+                glm::vec3 n = glm::cross(currentTriangle[1] - currentTriangle[0], currentTriangle[2] - currentTriangle[0]);
+                if (glm::length(n) > 1e-12f) {
+                    n = glm::normalize(n);
+                } else {
+                    n = glm::vec3(0, 0, 1); // fallback
+                }
+                
                 unsigned int baseIndex = mesh->vertices.size();
                 for (const auto& pos : currentTriangle) {
                     Vertex v;
                     v.position = pos;
-                    v.normal = currentNormal;
+                    v.normal = n;
                     mesh->vertices.push_back(v);
                 }
-                // Create a triangular facet with the three vertex indices
-                mesh->facets.push_back(Facet{baseIndex, baseIndex + 1, baseIndex + 2});
+                // Create a triangular facet with flipped winding order
+                mesh->facets.push_back(Facet{baseIndex, baseIndex + 2, baseIndex + 1});
             }
         }
         // Progress update by file position when available, else by approximate bytes

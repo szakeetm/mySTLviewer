@@ -113,17 +113,11 @@ void Renderer::setupMesh() {
             const glm::vec3 c = m_mesh->vertices[facet.indices[2]].position;
             facetNormal = glm::cross(b - a, c - a);
         }
-        if (glm::length(facetNormal) > 1e-8f) facetNormal = glm::normalize(facetNormal);
+        if (glm::length(facetNormal) > 1e-8f) {
+            facetNormal = glm::normalize(facetNormal);
+        }
 
         auto appendOrientedTri = [&](unsigned int i0, unsigned int i1, unsigned int i2) {
-            const glm::vec3& p0 = m_mesh->vertices[i0].position;
-            const glm::vec3& p1 = m_mesh->vertices[i1].position;
-            const glm::vec3& p2 = m_mesh->vertices[i2].position;
-            glm::vec3 triN = glm::cross(p1 - p0, p2 - p0);
-            if (glm::length(triN) > 1e-12f && glm::dot(triN, facetNormal) < 0.0f) {
-                // Flip winding to match facet normal
-                std::swap(i1, i2);
-            }
             triangleIndices.push_back(i0);
             triangleIndices.push_back(i1);
             triangleIndices.push_back(i2);
