@@ -17,7 +17,7 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 - **Back-face Culling**: Optional culling toggle (default: OFF)
 - **Debug Visualization**: Toggle overlays for facet normals, triangle normals, and triangle edges
 - **Orthogonal Projection**: Clean orthographic view of 3D models
-- **Interactive Controls**: Mouse-based rotation, pan, zoom, and custom rotation pivot
+- **Interactive Controls**: Mouse-based rotation, pan, zoom, custom rotation pivot, and light source rotation
 - **Kinetic Motion**: Optional inertial rotation and zoom for smooth interaction
 - **Startup File Dialog**: Native file chooser on launch (argument optional)
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
@@ -107,9 +107,12 @@ mySTLViewer [geometry_file]
   - Triangle edges from triangulation (yellow lines)
 
 ##### View Controls
-- **R**: Reset view to default position and clear custom pivot
+- **R**: Reset view to default position, clear custom pivot, and reset light direction
 - **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
 - **V**: Toggle VSync
+
+##### Lighting Controls
+- **L + Right Mouse Drag**: Rotate the light source direction
 
 ##### File Operations
 - **Ctrl/Cmd + O**: Open file dialog to load a new geometry file
@@ -194,6 +197,7 @@ The project uses the following libraries managed by vcpkg:
   - Triangle edges (yellow lines showing triangulation structure)
 - Orthogonal projection for accurate size representation
 - View-space lighting with ambient and diffuse components
+- Interactive light source rotation (L + right drag)
 - Automatic model centering and scaling
 - Optional back-face culling (default: OFF)
 - Custom rotation pivot with visual axes (RGB = XYZ)
