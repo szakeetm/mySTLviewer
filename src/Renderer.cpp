@@ -14,7 +14,7 @@ Renderer::Renderer()
         m_triEdgesVAO(0), m_triEdgesVBO(0), m_triEdgesVertexCount(0),
         m_solidVAO(0), m_solidVBO(0), m_solidVertexCount(0),
         m_drawFacetNormals(false), m_normalLengthScale(0.03f), m_cullingEnabled(false),
-            m_drawSolid(true), m_drawWireframe(true), m_indexCount(0), m_edgeIndexCount(0) {
+            m_drawSolid(true), m_drawWireframe(false), m_indexCount(0), m_edgeIndexCount(0) {
 }
 
 Renderer::~Renderer() {
