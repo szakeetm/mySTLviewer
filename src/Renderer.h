@@ -13,7 +13,7 @@ public:
     
     bool initialize();
     void setMesh(std::unique_ptr<Mesh> mesh);
-    void render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model);
+    void render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model, const glm::vec3& lightDirection = glm::vec3(0.0f, -1.0f, 0.0f));
     // Draw toggles
     void setDrawSolid(bool enabled) { m_drawSolid = enabled; }
     bool getDrawSolid() const { return m_drawSolid; }

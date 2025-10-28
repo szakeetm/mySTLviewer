@@ -298,7 +298,7 @@ void Renderer::setupMesh() {
     }
 }
 
-void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
+void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model, const glm::vec3& lightDirection) {
     if (!m_mesh || m_mesh->vertices.empty()) {
         return;
     }
@@ -309,9 +309,11 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
         GLint projLoc = glGetUniformLocation(m_shaderProgramSolid, "projection");
         GLint viewLoc = glGetUniformLocation(m_shaderProgramSolid, "view");
         GLint modelLoc = glGetUniformLocation(m_shaderProgramSolid, "model");
+        GLint lightDirLoc = glGetUniformLocation(m_shaderProgramSolid, "lightDirection");
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform3fv(lightDirLoc, 1, glm::value_ptr(lightDirection));
 
         glDisable(GL_LINE_SMOOTH);
         glDisable(GL_BLEND);

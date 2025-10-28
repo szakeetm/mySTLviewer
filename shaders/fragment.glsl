@@ -6,11 +6,12 @@ flat in vec3 FaceCenterVS;  // Facet center in view space (flat = uniform per fa
 out vec4 FragColor;
 
 uniform mat4 view;
+uniform vec3 lightDirection;
 
 void main()
 {
     // Light direction in view space
-    vec3 lightDirVS = normalize((view * vec4(0.0, -1.0, 0.0, 0.0)).xyz);
+    vec3 lightDirVS = normalize((view * vec4(lightDirection, 0.0)).xyz);
     vec3 norm = normalize(NormalVS);
     
     // Ambient + Diffuse

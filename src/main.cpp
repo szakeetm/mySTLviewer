@@ -1,8 +1,10 @@
+#define GLM_ENABLE_EXPERIMENTAL
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 #include <nfd.h>
 #include <iostream>
 #include <limits>
@@ -21,6 +23,7 @@ public:
     Application() : m_window(nullptr), m_glContext(nullptr), m_running(false), 
                     m_rotationX(30.0f), m_rotationY(45.0f), m_zoom(2.0f),
                     m_pan(0.0f, 0.0f),
+                    m_lightRotationX(0.0f), m_lightRotationY(0.0f),
                     m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
                     m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0),
                     m_pivotActive(false), m_pivotModel(0.0f),
@@ -377,6 +380,8 @@ private:
                                 std::cout << "R pressed (text) - Resetting view" << std::endl;
                                 m_rotationX = 30.0f;
                                 m_rotationY = 45.0f;
+                                m_lightRotationX = 0.0f;
+                                m_lightRotationY = 0.0f;
                                 if (m_renderer.getMesh()) {
                                     float extent = m_renderer.getMesh()->getMaxExtent();
                                     m_zoom = extent * 1.5f;
@@ -393,23 +398,34 @@ private:
                 case SDL_EVENT_MOUSE_MOTION:
                     // Handle right mouse button rotation
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
-                        float dxAngle = event.motion.xrel * 0.25f;
-                        float dyAngle = event.motion.yrel * 0.25f;
-                        m_rotationY += dxAngle;
-                        m_rotationX += dyAngle;
-                        m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
-                        m_cacheValid = false;
-                        if (m_kineticEnabled) {
-                            m_isRightDragging = true;
-                            Uint64 nowNS = SDL_GetTicksNS();
-                            if (m_lastDragMotionNS == 0) m_lastDragMotionNS = nowNS;
-                            float dtd = static_cast<float>(nowNS - m_lastDragMotionNS) / 1.0e9f;
-                            if (dtd > 0.0f && dtd < 0.05f) {
-                                // deg/sec velocities
-                                m_rotVelX = dyAngle / dtd;
-                                m_rotVelY = dxAngle / dtd;
+                        if (m_isLKeyPressed) {
+                            // L + right drag = light rotation
+                            float dxAngle = event.motion.xrel * 0.25f;
+                            float dyAngle = event.motion.yrel * 0.25f;
+                            m_lightRotationY += dxAngle;
+                            m_lightRotationX += dyAngle;
+                            m_lightRotationX = glm::clamp(m_lightRotationX, -89.0f, 89.0f);
+                            m_cacheValid = false;
+                        } else {
+                            // Normal right drag = model rotation
+                            float dxAngle = event.motion.xrel * 0.25f;
+                            float dyAngle = event.motion.yrel * 0.25f;
+                            m_rotationY += dxAngle;
+                            m_rotationX += dyAngle;
+                            m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
+                            m_cacheValid = false;
+                            if (m_kineticEnabled) {
+                                m_isRightDragging = true;
+                                Uint64 nowNS = SDL_GetTicksNS();
+                                if (m_lastDragMotionNS == 0) m_lastDragMotionNS = nowNS;
+                                float dtd = static_cast<float>(nowNS - m_lastDragMotionNS) / 1.0e9f;
+                                if (dtd > 0.0f && dtd < 0.05f) {
+                                    // deg/sec velocities
+                                    m_rotVelX = dyAngle / dtd;
+                                    m_rotVelY = dxAngle / dtd;
+                                }
+                                m_lastDragMotionNS = nowNS;
                             }
-                            m_lastDragMotionNS = nowNS;
                         }
                     }
                     // Handle middle mouse button panning
@@ -589,6 +605,8 @@ private:
                 std::cout << "R pressed - Resetting view" << std::endl;
                 m_rotationX = 30.0f;
                 m_rotationY = 45.0f;
+                m_lightRotationX = 0.0f;
+                m_lightRotationY = 0.0f;
                 if (m_renderer.getMesh()) {
                     float extent = m_renderer.getMesh()->getMaxExtent();
                     m_zoom = extent * 1.5f;
@@ -614,6 +632,9 @@ private:
                 break;
             case SDL_SCANCODE_D:
                 m_isDKeyPressed = pressed;
+                break;
+            case SDL_SCANCODE_L:
+                m_isLKeyPressed = pressed;
                 break;
             default:
                 break;
@@ -692,7 +713,12 @@ private:
             }
         }
         
-        m_renderer.render(projection, view, model);
+        // Compute light direction from rotation angles
+        glm::vec3 lightDirection = glm::vec3(0.0f, -1.0f, 0.0f);
+        lightDirection = glm::rotateX(lightDirection, glm::radians(m_lightRotationX));
+        lightDirection = glm::rotateY(lightDirection, glm::radians(m_lightRotationY));
+        
+        m_renderer.render(projection, view, model, lightDirection);
 
         // Draw pivot axes if active
         if (m_pivotActive && m_renderer.getMesh()) {
@@ -771,10 +797,15 @@ private:
     // Alternative trackpad controls
     bool m_isZKeyPressed;    // Z key for zoom mode
     bool m_isDKeyPressed;    // D key for pan mode  
+    bool m_isLKeyPressed;    // L key for light rotation mode
     bool m_isLeftDragging;   // left mouse dragging state
     int m_lastMouseX;        // previous mouse X position
     int m_lastMouseY;        // previous mouse Y position
     bool m_drawFacetNormals; // toggle for facet normals debug
+    
+    // Light rotation controls
+    float m_lightRotationX;  // light rotation around X axis (degrees)
+    float m_lightRotationY;  // light rotation around Y axis (degrees)
 
     // Kinetic tuning constants
     static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
@@ -1131,6 +1162,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  W: Toggle wireframe overlay (black)" << std::endl;
     std::cout << "  S: Toggle solid fill" << std::endl;
     std::cout << "     When both are ON, wireframe draws on top of solid." << std::endl;
+    std::cout << "  L: Hold + right drag to rotate light source" << std::endl;
     std::cout << "  R: Reset view" << std::endl;
     std::cout << "  Q/ESC: Quit" << std::endl;
     
