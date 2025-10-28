@@ -12,6 +12,7 @@ Renderer::Renderer()
     m_normalsVertexCount(0),
     m_triNormalsVAO(0), m_triNormalsVBO(0), m_triNormalsVertexCount(0),
     m_triEdgesVAO(0), m_triEdgesVBO(0), m_triEdgesVertexCount(0),
+    m_solidVAO(0), m_solidVBO(0), m_solidVertexCount(0),
     m_drawFacetNormals(false), m_normalLengthScale(0.03f), m_cullingEnabled(false),
       m_renderMode(RenderMode::WIREFRAME), m_indexCount(0), m_edgeIndexCount(0) {
 }
@@ -30,6 +31,8 @@ Renderer::~Renderer() {
     if (m_triNormalsVBO) glDeleteBuffers(1, &m_triNormalsVBO);
     if (m_triEdgesVAO) glDeleteVertexArrays(1, &m_triEdgesVAO);
     if (m_triEdgesVBO) glDeleteBuffers(1, &m_triEdgesVBO);
+    if (m_solidVAO) glDeleteVertexArrays(1, &m_solidVAO);
+    if (m_solidVBO) glDeleteBuffers(1, &m_solidVBO);
 }
 
 bool Renderer::initialize() {
@@ -61,6 +64,8 @@ void Renderer::setupMesh() {
     if (m_triNormalsVBO) { glDeleteBuffers(1, &m_triNormalsVBO); m_triNormalsVBO = 0; }
     if (m_triEdgesVAO) { glDeleteVertexArrays(1, &m_triEdgesVAO); m_triEdgesVAO = 0; }
     if (m_triEdgesVBO) { glDeleteBuffers(1, &m_triEdgesVBO); m_triEdgesVBO = 0; }
+    if (m_solidVAO) { glDeleteVertexArrays(1, &m_solidVAO); m_solidVAO = 0; }
+    if (m_solidVBO) { glDeleteBuffers(1, &m_solidVBO); m_solidVBO = 0; }
     
     // Generate buffers
     glGenVertexArrays(1, &m_VAO);
@@ -77,6 +82,8 @@ void Renderer::setupMesh() {
     
     // Convert facets to triangle indices using earcut for proper triangulation
     std::vector<unsigned int> triangleIndices;
+    struct SolidVertex { glm::vec3 position; glm::vec3 facetNormal; };
+    std::vector<SolidVertex> solidVertices;
 
     for (const auto& facet : m_mesh->facets) {
         const size_t n = facet.indices.size();
@@ -112,6 +119,10 @@ void Renderer::setupMesh() {
             triangleIndices.push_back(i0);
             triangleIndices.push_back(i1);
             triangleIndices.push_back(i2);
+            // Also push de-indexed solid vertices carrying the facet normal (constant per triangle)
+            solidVertices.push_back({ m_mesh->vertices[i0].position, facetNormal });
+            solidVertices.push_back({ m_mesh->vertices[i1].position, facetNormal });
+            solidVertices.push_back({ m_mesh->vertices[i2].position, facetNormal });
         };
 
         if (n == 3) {
@@ -263,6 +274,23 @@ void Renderer::setupMesh() {
             m_triEdgesVertexCount = static_cast<GLsizei>(triEdgeVerts.size());
         }
     }
+
+    // Build solid-mode VBO/VAO (positions + facet normals), draw with glDrawArrays
+    m_solidVertexCount = static_cast<GLsizei>(solidVertices.size());
+    if (m_solidVertexCount > 0) {
+        glGenVertexArrays(1, &m_solidVAO);
+        glGenBuffers(1, &m_solidVBO);
+        glBindVertexArray(m_solidVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_solidVBO);
+        glBufferData(GL_ARRAY_BUFFER, solidVertices.size() * sizeof(SolidVertex), solidVertices.data(), GL_STATIC_DRAW);
+        // position at location 0
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SolidVertex), (void*)offsetof(SolidVertex, position));
+        glEnableVertexAttribArray(0);
+        // facet normal at location 1 (reuse aNormal channel)
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SolidVertex), (void*)offsetof(SolidVertex, facetNormal));
+        glEnableVertexAttribArray(1);
+        glBindVertexArray(0);
+    }
 }
 
 void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
@@ -284,7 +312,12 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     
-    glBindVertexArray(m_VAO);
+    // Bind appropriate VAO for mode
+    GLuint activeVAO = m_VAO;
+    if (m_renderMode == RenderMode::SOLID && m_solidVAO) {
+        activeVAO = m_solidVAO;
+    }
+    glBindVertexArray(activeVAO);
     
     if (m_renderMode == RenderMode::WIREFRAME) {
         // Wireframe: draw edges using GL_LINES
@@ -305,9 +338,13 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
             glDisable(GL_CULL_FACE);
         }
         
-        // Bind the triangle buffer and draw
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
-        glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+        if (activeVAO == m_solidVAO) {
+            glDrawArrays(GL_TRIANGLES, 0, m_solidVertexCount);
+        } else {
+            // Fallback: indexed draw if solid VAO not available
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
+            glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+        }
     }
     
     glBindVertexArray(0);
@@ -359,21 +396,44 @@ bool Renderer::loadShaders() {
     // Load solid shaders from files
     std::ifstream vShaderFile("shaders/vertex.glsl");
     std::ifstream fShaderFile("shaders/fragment.glsl");
-    if (!vShaderFile.is_open() || !fShaderFile.is_open()) {
+    std::ifstream gShaderFile("shaders/solid.geom");
+    if (!vShaderFile.is_open() || !fShaderFile.is_open() || !gShaderFile.is_open()) {
         std::cerr << "Failed to open shader files" << std::endl;
         return false;
     }
-    std::stringstream vShaderStream, fShaderStream;
+    std::stringstream vShaderStream, fShaderStream, gShaderStream;
     vShaderStream << vShaderFile.rdbuf();
     fShaderStream << fShaderFile.rdbuf();
+    gShaderStream << gShaderFile.rdbuf();
     std::string vertexCode = vShaderStream.str();
     std::string fragmentCode = fShaderStream.str();
+    std::string geometryCode = gShaderStream.str();
 
     GLuint vSolid = compileShader(vertexCode, GL_VERTEX_SHADER);
     GLuint fSolid = compileShader(fragmentCode, GL_FRAGMENT_SHADER);
-    if (!vSolid || !fSolid) return false;
-    m_shaderProgramSolid = linkProgram(vSolid, fSolid);
+    GLuint gSolid = compileShader(geometryCode, GL_GEOMETRY_SHADER);
+    if (!vSolid || !fSolid || !gSolid) return false;
+    // Link with geometry shader for true flat shading
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vSolid);
+    glAttachShader(program, gSolid);
+    glAttachShader(program, fSolid);
+    glLinkProgram(program);
+    GLint success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, nullptr, infoLog);
+        std::cerr << "Program linking failed (solid with GS):\n" << infoLog << std::endl;
+        glDeleteProgram(program);
+        glDeleteShader(vSolid);
+        glDeleteShader(gSolid);
+        glDeleteShader(fSolid);
+        return false;
+    }
+    m_shaderProgramSolid = program;
     glDeleteShader(vSolid);
+    glDeleteShader(gSolid);
     glDeleteShader(fSolid);
     if (!m_shaderProgramSolid) return false;
 

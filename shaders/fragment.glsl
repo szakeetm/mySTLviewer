@@ -1,12 +1,13 @@
 #version 330 core
 
-in vec3 FragPos;   // world-space position
-in vec3 Normal;    // interpolated normal (unused for flat shading)
-in vec3 WorldPos;  // view-space position
+// For flat shading, we use values output by the geometry shader
+flat in vec3 FaceNormalVS;  // face normal in view space
+flat in vec3 FaceCenterVS;  // face center in view space
 
 out vec4 FragColor;
 
 uniform bool isWireframe; // legacy, solid uses separate program
+uniform mat4 view;        // used to transform light dir to view space
 
 void main()
 {
@@ -16,24 +17,22 @@ void main()
         return;
     }
 
-    // Solid mode - flat shading using face normal from screen-space derivatives
-    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
-    // Compute face normal from derivatives of world-space position
-    vec3 faceN = normalize(cross(dFdx(FragPos), dFdy(FragPos)));
-    // Ensure consistent orientation w.r.t. front-facing
-    vec3 norm = gl_FrontFacing ? faceN : -faceN;
+    // Solid mode - flat shading using per-face values from geometry shader
+    // Transform constant world-space light to view space (w=0 for direction)
+    vec3 lightDirVS = normalize((view * vec4(0.5, 1.0, 0.5, 0.0)).xyz);
+    vec3 norm = normalize(FaceNormalVS);
     
     // Ambient lighting (slightly higher for brighter base)
     float ambientStrength = 0.45;
     vec3 ambient = ambientStrength * vec3(1.0);
     
     // Diffuse lighting
-    float diff = max(dot(norm, lightDir), 0.0);
+    float diff = max(dot(norm, lightDirVS), 0.0);
     vec3 diffuse = diff * vec3(1.0);
     
     // Specular lighting for more material feel (a touch stronger)
-    vec3 viewDir = normalize(-WorldPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
+    vec3 viewDir = normalize(-FaceCenterVS);
+    vec3 reflectDir = reflect(-lightDirVS, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
     vec3 specular = 0.45 * spec * vec3(1.0);
     

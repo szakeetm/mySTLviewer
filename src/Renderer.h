@@ -57,6 +57,10 @@ private:
     GLuint m_triEdgesVAO;
     GLuint m_triEdgesVBO;
     GLsizei m_triEdgesVertexCount; // number of vertices (2 per edge * 3 per tri)
+    // Solid-mode dedicated VBO/VAO with per-triangle facet normals to hide triangulation
+    GLuint m_solidVAO;
+    GLuint m_solidVBO;
+    GLsizei m_solidVertexCount; // number of vertices for glDrawArrays
     bool m_drawFacetNormals;
     float m_normalLengthScale; // relative to model extent
     bool m_cullingEnabled; // back-face culling toggle
