@@ -5,7 +5,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 Renderer::Renderer()
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME) {
+    : m_VAO(0), m_VBO(0), m_EBO(0), m_shaderProgramSolid(0), m_shaderProgramWireframe(0), m_renderMode(RenderMode::WIREFRAME), m_indexCount(0) {
 }
 
 Renderer::~Renderer() {
@@ -51,10 +51,29 @@ void Renderer::setupMesh() {
     glBufferData(GL_ARRAY_BUFFER, m_mesh->vertices.size() * sizeof(Vertex),
                  m_mesh->vertices.data(), GL_STATIC_DRAW);
     
+    // Convert facets to triangle indices for OpenGL
+    // For now, we triangulate by simple fan triangulation (works for convex polygons)
+    std::vector<unsigned int> triangleIndices;
+    for (const auto& facet : m_mesh->facets) {
+        if (facet.indices.size() < 3) {
+            continue; // Skip degenerate facets
+        }
+        
+        // Fan triangulation: connect vertex 0 to all other edges
+        for (size_t i = 1; i + 1 < facet.indices.size(); ++i) {
+            triangleIndices.push_back(facet.indices[0]);
+            triangleIndices.push_back(facet.indices[i]);
+            triangleIndices.push_back(facet.indices[i + 1]);
+        }
+    }
+    
+    // Store the number of indices for rendering
+    m_indexCount = triangleIndices.size();
+    
     // Upload index data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_mesh->indices.size() * sizeof(unsigned int),
-                 m_mesh->indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, triangleIndices.size() * sizeof(unsigned int),
+                 triangleIndices.data(), GL_STATIC_DRAW);
     
     // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
@@ -69,7 +88,8 @@ void Renderer::setupMesh() {
     glBindVertexArray(0);
     
     std::cout << "Mesh setup complete: " << m_mesh->vertices.size() 
-              << " vertices, " << m_mesh->indices.size() / 3 << " triangles" << std::endl;
+              << " vertices, " << m_mesh->facets.size() << " facets, " 
+              << m_indexCount / 3 << " triangles" << std::endl;
 }
 
 void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
@@ -111,7 +131,7 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
     
     // Draw
     glBindVertexArray(m_VAO);
-    glDrawElements(GL_TRIANGLES, m_mesh->indices.size(), GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
     
     // Reset polygon mode (keep other state as set for the next frame)

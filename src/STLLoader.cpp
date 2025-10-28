@@ -76,7 +76,7 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
     std::cout << "Loading binary STL with " << numTriangles << " triangles..." << std::endl;
     
     mesh->vertices.reserve(numTriangles * 3);
-    mesh->indices.reserve(numTriangles * 3);
+    mesh->facets.reserve(numTriangles);
     
     // Progress tracking
     uint32_t lastPercent = 0;
@@ -90,7 +90,8 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
         file.read(reinterpret_cast<char*>(normal), 12);
         glm::vec3 n(normal[0], normal[1], normal[2]);
         
-        // Read 3 vertices
+        // Read 3 vertices and create a facet
+        unsigned int baseIndex = mesh->vertices.size();
         for (int j = 0; j < 3; ++j) {
             float vertex[3];
             file.read(reinterpret_cast<char*>(vertex), 12);
@@ -100,8 +101,10 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename) {
             v.normal = n;
             
             mesh->vertices.push_back(v);
-            mesh->indices.push_back(i * 3 + j);
         }
+        
+        // Create a triangular facet with the three vertex indices
+        mesh->facets.push_back(Facet{baseIndex, baseIndex + 1, baseIndex + 2});
         
         // Skip attribute byte count
         file.seekg(2, std::ios::cur);
@@ -171,9 +174,8 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename) {
                     v.normal = currentNormal;
                     mesh->vertices.push_back(v);
                 }
-                mesh->indices.push_back(baseIndex);
-                mesh->indices.push_back(baseIndex + 1);
-                mesh->indices.push_back(baseIndex + 2);
+                // Create a triangular facet with the three vertex indices
+                mesh->facets.push_back(Facet{baseIndex, baseIndex + 1, baseIndex + 2});
             }
         }
         // Progress update by file position when available, else by approximate bytes

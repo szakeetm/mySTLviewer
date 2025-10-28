@@ -326,9 +326,18 @@ private:
             m_fps = m_frameCount * 1000000000.0f / elapsed;
             
             // Update window title with FPS
-            size_t triCount = (m_renderer.getMesh() ? m_renderer.getMesh()->indices.size() / 3 : 0);
+            // Calculate triangle count from facets (each facet is triangulated as (n-2) triangles)
+            size_t triCount = 0;
+            if (m_renderer.getMesh()) {
+                for (const auto& facet : m_renderer.getMesh()->facets) {
+                    if (facet.indices.size() >= 3) {
+                        triCount += facet.indices.size() - 2;
+                    }
+                }
+            }
             std::string title = "STL Viewer - FPS: " + std::to_string(static_cast<int>(m_fps)) +
-                                " | Tris: " + std::to_string(triCount);
+                " | Facets: " + std::to_string(m_renderer.getMesh()->facets.size()) +
+                " | Tris: " + std::to_string(triCount);
             SDL_SetWindowTitle(m_window, title.c_str());
             
             m_frameCount = 0;

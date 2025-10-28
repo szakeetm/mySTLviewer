@@ -37,4 +37,5 @@ private:
     GLuint m_shaderProgramSolid;
     GLuint m_shaderProgramWireframe;
     RenderMode m_renderMode;
+    size_t m_indexCount; // Number of triangle indices for rendering
 };

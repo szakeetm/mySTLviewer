@@ -13,9 +13,25 @@ struct Triangle {
     glm::vec3 vertices[3];
 };
 
+// A facet represents a polygon (e.g., triangle, quad, etc.)
+// with a list of vertex indices that form the polygon
+struct Facet {
+    std::vector<unsigned int> indices;
+    
+    // Constructor for convenience
+    Facet() = default;
+    Facet(std::initializer_list<unsigned int> idxList) : indices(idxList) {}
+    
+    // Helper to get number of vertices in this polygon
+    size_t vertexCount() const { return indices.size(); }
+    
+    // Check if this is a triangle
+    bool isTriangle() const { return indices.size() == 3; }
+};
+
 struct Mesh {
     std::vector<Vertex> vertices;
-    std::vector<unsigned int> indices;
+    std::vector<Facet> facets;
     glm::vec3 min_bounds;
     glm::vec3 max_bounds;
     
