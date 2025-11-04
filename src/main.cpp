@@ -46,13 +46,7 @@ public:
                     , m_isLeftDragging(false)
                     , m_lastMouseX(0)
                     , m_lastMouseY(0)
-                    , m_drawFacetNormals(false)
-                    , m_showProgressBar(false)
-                    , m_progressBarProgress(0.0f)
-                    , m_progressBarMessage("Loading...")
-                    , m_progressBarVAO(0)
-                    , m_progressBarVBO(0)
-                    , m_progressBarShaderProgram(0) {}
+                    , m_drawFacetNormals(false) {}
     
     ~Application() {
         cleanup();
@@ -159,8 +153,6 @@ public:
         initBackgroundGradient();
         // Initialize axes renderer
         initAxesRenderer();
-        // Initialize progress bar
-        initProgressBar();
 
         
         // Initialize renderer
@@ -310,129 +302,6 @@ private:
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         glBindVertexArray(0);
-    }
-    
-    void initProgressBar() {
-        // Create shader for progress bar
-        const char* vsrc = R"(
-            #version 330 core
-            layout (location = 0) in vec2 aPos;
-            uniform vec2 screenSize;
-            uniform vec2 position;
-            uniform vec2 size;
-            void main() {
-                vec2 pos = aPos * size + position;
-                // Convert to NDC
-                vec2 ndc = (pos / screenSize) * 2.0 - 1.0;
-                ndc.y = -ndc.y; // Flip Y axis
-                gl_Position = vec4(ndc, 0.0, 1.0);
-            }
-        )";
-        const char* fsrc = R"(
-            #version 330 core
-            out vec4 FragColor;
-            uniform vec4 color;
-            void main() {
-                FragColor = color;
-            }
-        )";
-        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, 1, &vsrc, nullptr);
-        glCompileShader(vs);
-        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, 1, &fsrc, nullptr);
-        glCompileShader(fs);
-        m_progressBarShaderProgram = glCreateProgram();
-        glAttachShader(m_progressBarShaderProgram, vs);
-        glAttachShader(m_progressBarShaderProgram, fs);
-        glLinkProgram(m_progressBarShaderProgram);
-        glDeleteShader(vs);
-        glDeleteShader(fs);
-        
-        // Create VAO/VBO for unit quad
-        float quad[] = {
-            0.0f, 0.0f,
-            1.0f, 0.0f,
-            0.0f, 1.0f,
-            1.0f, 1.0f
-        };
-        glGenVertexArrays(1, &m_progressBarVAO);
-        glGenBuffers(1, &m_progressBarVBO);
-        glBindVertexArray(m_progressBarVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, m_progressBarVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
-    }
-    
-    void renderProgressBar() {
-        int width, height;
-        SDL_GetWindowSize(m_window, &width, &height);
-        
-        // Save current GL state
-        GLboolean wasBlend = glIsEnabled(GL_BLEND);
-        GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
-        GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-        
-        glUseProgram(m_progressBarShaderProgram);
-        
-        // Progress bar dimensions
-        const int barWidth = 400;
-        const int barHeight = 30;
-        const int padding = 20;
-        const int textHeight = 20;
-        int barX = (width - barWidth) / 2;
-        int barY = height / 2;
-        
-        // Draw background (semi-transparent dark overlay)
-        GLint screenSizeLoc = glGetUniformLocation(m_progressBarShaderProgram, "screenSize");
-        GLint positionLoc = glGetUniformLocation(m_progressBarShaderProgram, "position");
-        GLint sizeLoc = glGetUniformLocation(m_progressBarShaderProgram, "size");
-        GLint colorLoc = glGetUniformLocation(m_progressBarShaderProgram, "color");
-        
-        glUniform2f(screenSizeLoc, static_cast<float>(width), static_cast<float>(height));
-        
-        // Draw semi-transparent background overlay
-        glUniform2f(positionLoc, 0.0f, 0.0f);
-        glUniform2f(sizeLoc, static_cast<float>(width), static_cast<float>(height));
-        glUniform4f(colorLoc, 0.0f, 0.0f, 0.0f, 0.6f);
-        glBindVertexArray(m_progressBarVAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        
-        // Draw progress bar background
-        glUniform2f(positionLoc, static_cast<float>(barX - padding), static_cast<float>(barY - padding - textHeight));
-        glUniform2f(sizeLoc, static_cast<float>(barWidth + padding * 2), static_cast<float>(barHeight + padding * 2 + textHeight));
-        glUniform4f(colorLoc, 0.2f, 0.2f, 0.2f, 0.9f);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        
-        // Draw progress bar fill
-        int progressWidth = static_cast<int>(barWidth * m_progressBarProgress);
-        if (progressWidth > 0) {
-            glUniform2f(positionLoc, static_cast<float>(barX), static_cast<float>(barY - textHeight));
-            glUniform2f(sizeLoc, static_cast<float>(progressWidth), static_cast<float>(barHeight));
-            glUniform4f(colorLoc, 0.2f, 0.6f, 1.0f, 1.0f); // Blue progress fill
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        }
-        
-        // Draw border
-        glUniform2f(positionLoc, static_cast<float>(barX - padding), static_cast<float>(barY - padding - textHeight));
-        glUniform2f(sizeLoc, static_cast<float>(barWidth + padding * 2), static_cast<float>(barHeight + padding * 2 + textHeight));
-        glUniform4f(colorLoc, 0.8f, 0.8f, 0.8f, 1.0f);
-        glLineWidth(2.0f);
-        // Draw border as lines (we'll use a simple approach)
-        // For simplicity, we'll just draw the filled bar outline
-        
-        glBindVertexArray(0);
-        
-        // Restore GL state
-        if (wasDepth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-        if (wasCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-        if (!wasBlend) glDisable(GL_BLEND);
     }
 
     void renderBackground() {
@@ -856,11 +725,6 @@ private:
             drawPivotAxes(projection, view, model);
         }
         
-        // Draw progress bar overlay if loading
-        if (m_showProgressBar) {
-            renderProgressBar();
-        }
-        
         SDL_GL_SwapWindow(m_window);
     }
     
@@ -874,9 +738,6 @@ private:
     if (m_axesVAO) glDeleteVertexArrays(1, &m_axesVAO);
     if (m_axesVBO) glDeleteBuffers(1, &m_axesVBO);
     if (m_axesProgram) glDeleteProgram(m_axesProgram);
-    if (m_progressBarVAO) glDeleteVertexArrays(1, &m_progressBarVAO);
-    if (m_progressBarVBO) glDeleteBuffers(1, &m_progressBarVBO);
-    if (m_progressBarShaderProgram) glDeleteProgram(m_progressBarShaderProgram);
         
         if (m_glContext) {
             SDL_GL_DestroyContext(m_glContext);
@@ -945,14 +806,6 @@ private:
     // Light rotation controls
     float m_lightRotationX;  // light rotation around X axis (degrees)
     float m_lightRotationY;  // light rotation around Y axis (degrees)
-    
-    // Progress bar state
-    bool m_showProgressBar;
-    float m_progressBarProgress;  // 0.0 to 1.0
-    std::string m_progressBarMessage;
-    GLuint m_progressBarVAO;
-    GLuint m_progressBarVBO;
-    GLuint m_progressBarShaderProgram;
 
     // Kinetic tuning constants
     static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
@@ -962,28 +815,16 @@ private:
     bool loadGeometry(const std::string& path) {
         std::unique_ptr<Mesh> mesh;
         
-        // Show progress bar
-        m_showProgressBar = true;
-        m_progressBarProgress = 0.0f;
-        m_progressBarMessage = "Loading...";
-        
-        // Create progress callback
-        bool cancelled = false;
-        auto progressCallback = [this, &cancelled](float progress, const std::string& message) {
-            if (cancelled) return; // Don't update if cancelled
-            m_progressBarProgress = progress;
-            m_progressBarMessage = message;
-            // Process events and render to update progress bar
+        // Create progress callback (optional - can be nullptr)
+        // For standalone mySTLviewer, we don't use GUI progress bar
+        auto progressCallback = [](float progress, const std::string& message) {
+            // Process events during loading to keep window responsive
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_EVENT_QUIT) {
-                    cancelled = true;
-                    m_running = false;
                     return;
                 }
             }
-            // Render the progress bar
-            render();
         };
         
         // Determine file type and load accordingly
@@ -1006,14 +847,6 @@ private:
         } catch (...) {
             // Handle any exceptions during loading
             mesh = nullptr;
-        }
-        
-        // Hide progress bar regardless of success or failure
-        m_showProgressBar = false;
-        
-        // Final render to ensure progress bar is removed from screen
-        if (!cancelled) {
-            render();
         }
         
         if (!mesh) {
