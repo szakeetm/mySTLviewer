@@ -43,6 +43,7 @@ public:
                     , m_lastDragMotionNS(0)
                     , m_isZKeyPressed(false)
                     , m_isDKeyPressed(false)
+                    , m_isLKeyPressed(false)
                     , m_isLeftDragging(false)
                     , m_lastMouseX(0)
                     , m_lastMouseY(0)
