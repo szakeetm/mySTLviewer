@@ -89,9 +89,6 @@ public:
         SDL_ShowWindow(m_window);
         SDL_RaiseWindow(m_window);
         SDL_SetWindowKeyboardGrab(m_window, false);
-        if (!SDL_StartTextInput(m_window)) { // enable text input events as a fallback
-            std::cerr << "Warning: failed to start text input: " << SDL_GetError() << std::endl;
-        }
         // Give the OS a brief moment to grant keyboard focus to our window
         for (int attempt = 0; attempt < 50; ++attempt) { // ~500ms total
             Uint32 flags = SDL_GetWindowFlags(m_window);
@@ -370,33 +367,6 @@ private:
                     handleKeyState(event.key.scancode, false);
                     break;
                     
-                case SDL_EVENT_TEXT_INPUT:
-                    if (event.text.text && event.text.text[0] != '\0') {
-                        char c = event.text.text[0];
-                        switch (c) {
-                            case 'q': case 'Q':
-                                std::cout << "Q pressed (text) - Quitting" << std::endl;
-                                m_running = false;
-                                break;
-                            case 'r': case 'R':
-                                std::cout << "R pressed (text) - Resetting view" << std::endl;
-                                m_rotationX = 30.0f;
-                                m_rotationY = 45.0f;
-                                m_lightRotationX = 0.0f;
-                                m_lightRotationY = 0.0f;
-                                if (m_renderer.getMesh()) {
-                                    float extent = m_renderer.getMesh()->getMaxExtent();
-                                    m_zoom = extent * 1.5f;
-                                }
-                                m_pan = glm::vec2(0.0f);
-                                m_pivotActive = false;
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    break;
-                    
                 case SDL_EVENT_MOUSE_MOTION:
                     // Handle right mouse button rotation
                     if (event.motion.state & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
@@ -534,6 +504,21 @@ private:
         }
     }
     
+    void resetView() {
+        std::cout << "Resetting view" << std::endl;
+        m_rotationX = 30.0f;
+        m_rotationY = 45.0f;
+        m_lightRotationX = 0.0f;
+        m_lightRotationY = 0.0f;
+        if (m_renderer.getMesh()) {
+            float extent = m_renderer.getMesh()->getMaxExtent();
+            m_zoom = extent * 1.5f;
+        }
+        m_pan = glm::vec2(0.0f);
+        m_pivotActive = false;
+        m_cacheValid = false;
+    }
+    
     void handleKeyPress(SDL_Scancode scancode, SDL_Keymod mod) {
         switch (scancode) {
             case SDL_SCANCODE_ESCAPE:
@@ -604,18 +589,7 @@ private:
                 break;
             }
             case SDL_SCANCODE_R:
-                std::cout << "R pressed - Resetting view" << std::endl;
-                m_rotationX = 30.0f;
-                m_rotationY = 45.0f;
-                m_lightRotationX = 0.0f;
-                m_lightRotationY = 0.0f;
-                if (m_renderer.getMesh()) {
-                    float extent = m_renderer.getMesh()->getMaxExtent();
-                    m_zoom = extent * 1.5f;
-                }
-                m_pan = glm::vec2(0.0f);
-                m_pivotActive = false;
-                m_cacheValid = false;
+                resetView();
                 break;
             case SDL_SCANCODE_K:
                 m_kineticEnabled = !m_kineticEnabled;
@@ -731,9 +705,6 @@ private:
     }
     
     void cleanup() {
-        if (!SDL_StopTextInput(m_window)) {
-            // not fatal
-        }
     if (m_bgVAO) glDeleteVertexArrays(1, &m_bgVAO);
     if (m_bgVBO) glDeleteBuffers(1, &m_bgVBO);
     if (m_bgShaderProgram) glDeleteProgram(m_bgShaderProgram);
