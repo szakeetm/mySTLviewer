@@ -1,3 +1,6 @@
+// NOTE: This is a copy of ConsoleProgress from the main myGuiFramework project
+// It is included here to allow mySTLviewer to compile and run standalone
+
 #include "ConsoleProgress.h"
 #include <iostream>
 #include <iomanip>
@@ -53,4 +56,3 @@ void ConsoleProgress::updateDisplay() {
         }
     }
 }
-

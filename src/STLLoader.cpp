@@ -1,29 +1,15 @@
 #include "STLLoader.h"
+#include "progress/Progress_abstract.h"  // Include for mySTLviewer standalone compilation
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include <iomanip>
 #include <cstring>
 
-// Simple console progress bar
-static void printProgressBar(const std::string& prefix, float fraction) {
-    if (fraction < 0.0f) fraction = 0.0f;
-    if (fraction > 1.0f) fraction = 1.0f;
-    const int width = 40; // progress bar width in chars
-    int pos = static_cast<int>(fraction * width + 0.5f);
-    std::cout << "\r" << prefix << " [";
-    for (int i = 0; i < width; ++i) {
-        std::cout << (i < pos ? '=' : ' ');
-    }
-    std::cout << "] " << std::fixed << std::setprecision(1) << (fraction * 100.0f) << "%";
-    std::cout.flush();
-}
-
-std::unique_ptr<Mesh> STLLoader::load(const std::string& filename, ProgressCallback progressCallback) {
+std::unique_ptr<Mesh> STLLoader::load(const std::string& filename, Progress_abstract* progress) {
     if (isBinarySTL(filename)) {
-        return loadBinary(filename, progressCallback);
+        return loadBinary(filename, progress);
     } else {
-        return loadASCII(filename, progressCallback);
+        return loadASCII(filename, progress);
     }
 }
 
@@ -57,7 +43,7 @@ bool STLLoader::isBinarySTL(const std::string& filename) {
     return true; // Likely binary
 }
 
-std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename, ProgressCallback progressCallback) {
+std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename, Progress_abstract* progress) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << filename << std::endl;
@@ -73,12 +59,9 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename, Progres
     uint32_t numTriangles;
     file.read(reinterpret_cast<char*>(&numTriangles), 4);
     
-    if (!progressCallback) {
-        std::cout << "Loading binary STL with " << numTriangles << " triangles..." << std::endl;
-    }
-    
-    if (progressCallback) {
-        progressCallback(0.0f, "Reading triangles...");
+    if (progress) {
+        progress->setMessage("Reading triangles...");
+        progress->setProgress(0.0f);
     }
     
     mesh->vertices.reserve(numTriangles * 3);
@@ -86,13 +69,9 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename, Progres
     
     // Progress tracking
     uint32_t lastPercent = 0;
-    if (numTriangles == 0) {
-        if (!progressCallback) {
-            printProgressBar("Reading triangles", 1.0f);
-        }
-        if (progressCallback) {
-            progressCallback(1.0f, "Complete");
-        }
+    if (numTriangles == 0 && progress) {
+        progress->setMessage("Complete");
+        progress->setProgress(1.0f);
     }
 
     for (uint32_t i = 0; i < numTriangles; ++i) {
@@ -132,31 +111,25 @@ std::unique_ptr<Mesh> STLLoader::loadBinary(const std::string& filename, Progres
 
         // Update progress bar only when percentage changes (max 100 prints)
         uint32_t percent = numTriangles ? static_cast<uint32_t>(((i + 1) * 100ULL) / numTriangles) : 100;
-        if (percent != lastPercent) {
+        if (percent != lastPercent && progress) {
             lastPercent = percent;
-            float progress = percent / 100.0f;
-            if (!progressCallback) {
-                printProgressBar("Reading triangles", progress);
-            }
-            if (progressCallback) {
-                progressCallback(progress, "Reading triangles...");
-            }
+            float progressValue = percent / 100.0f;
+            progress->setMessage("Reading triangles...");
+            progress->setProgress(progressValue);
         }
     }
     
-    if (progressCallback) {
-        progressCallback(1.0f, "Processing geometry...");
+    if (progress) {
+        progress->setMessage("Processing geometry...");
+        progress->setProgress(1.0f);
     }
     
     mesh->calculateBounds();
-    if (!progressCallback) {
-        std::cout << "\nLoaded " << mesh->vertices.size() << " vertices" << std::endl;
-    }
     
     return mesh;
 }
 
-std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename, ProgressCallback progressCallback) {
+std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename, Progress_abstract* progress) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << filename << std::endl;
@@ -168,12 +141,9 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename, Progress
     glm::vec3 currentNormal;
     std::vector<glm::vec3> currentTriangle;
     
-    if (!progressCallback) {
-        std::cout << "Loading ASCII STL..." << std::endl;
-    }
-    
-    if (progressCallback) {
-        progressCallback(0.0f, "Reading file...");
+    if (progress) {
+        progress->setMessage("Reading file...");
+        progress->setProgress(0.0f);
     }
     
     // Determine total file size (bytes) for progress estimation
@@ -231,30 +201,24 @@ std::unique_ptr<Mesh> STLLoader::loadASCII(const std::string& filename, Progress
             approxRead += static_cast<std::streampos>(line.size() + 1);
             pos = approxRead;
         }
-        if (totalBytes > 0) {
+        if (totalBytes > 0 && progress) {
             uint32_t percent = static_cast<uint32_t>((static_cast<long double>(pos) * 100.0L) / static_cast<long double>(totalBytes));
             if (percent > 100) percent = 100;
             if (percent != lastPercent) {
                 lastPercent = percent;
-                float progress = percent / 100.0f;
-                if (!progressCallback) {
-                    printProgressBar("Reading file", progress);
-                }
-                if (progressCallback) {
-                    progressCallback(progress, "Reading file...");
-                }
+                float progressValue = percent / 100.0f;
+                progress->setMessage("Reading file...");
+                progress->setProgress(progressValue);
             }
         }
     }
     
-    if (progressCallback) {
-        progressCallback(1.0f, "Processing geometry...");
+    if (progress) {
+        progress->setMessage("Processing geometry...");
+        progress->setProgress(1.0f);
     }
     
     mesh->calculateBounds();
-    if (!progressCallback) {
-        std::cout << "\nLoaded " << mesh->vertices.size() << " vertices" << std::endl;
-    }
     
     return mesh;
 }

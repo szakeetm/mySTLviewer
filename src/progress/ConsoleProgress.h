@@ -3,8 +3,9 @@
 
 #include "Progress_abstract.h"
 #include <string>
-#include <iostream>
-#include <iomanip>
+
+// NOTE: This is a copy of ConsoleProgress from the main myGuiFramework project
+// It is included here to allow mySTLviewer to compile and run standalone
 
 // Console-based progress indicator
 // Displays progress as a text-based progress bar in the console
@@ -42,4 +43,3 @@ private:
 };
 
 #endif // STLVIEWER_CONSOLE_PROGRESS_H
-

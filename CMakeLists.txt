@@ -20,6 +20,7 @@ set(SOURCES
     src/STLLoader.cpp
     src/XMLLoader.cpp
     src/Renderer.cpp
+    src/progress/ConsoleProgress.cpp
 )
 
 set(HEADERS
@@ -27,6 +28,8 @@ set(HEADERS
     src/XMLLoader.h
     src/Renderer.h
     src/Mesh.h
+    src/progress/Progress_abstract.h
+    src/progress/ConsoleProgress.h
 )
 
 

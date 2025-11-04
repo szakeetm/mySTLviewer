@@ -14,6 +14,7 @@
 #include "STLLoader.h"
 #include "XMLLoader.h"
 #include "Renderer.h"
+#include "progress/ConsoleProgress.h"
 
 const int WINDOW_WIDTH = 1024;
 const int WINDOW_HEIGHT = 768;
@@ -816,17 +817,9 @@ private:
     bool loadGeometry(const std::string& path) {
         std::unique_ptr<Mesh> mesh;
         
-        // Create progress callback (optional - can be nullptr)
-        // For standalone mySTLviewer, we don't use GUI progress bar
-        auto progressCallback = [](float progress, const std::string& message) {
-            // Process events during loading to keep window responsive
-            SDL_Event event;
-            while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_EVENT_QUIT) {
-                    return;
-                }
-            }
-        };
+        // Create console progress for standalone mySTLviewer
+        ConsoleProgress consoleProgress;
+        Progress_abstract* progress = &consoleProgress;
         
         // Determine file type and load accordingly
         try {
@@ -834,16 +827,16 @@ private:
             if (dotPos != std::string::npos) {
                 std::string ext = path.substr(dotPos);
                 if (ext == ".xml" || ext == ".XML") {
-                    mesh = XMLLoader::load(path, progressCallback);
+                    mesh = XMLLoader::load(path, progress);
                 } else if (ext == ".zip" || ext == ".ZIP") {
                     // Zip files should contain XML, use XMLLoader
-                    mesh = XMLLoader::load(path, progressCallback);
+                    mesh = XMLLoader::load(path, progress);
                 } else {
-                    mesh = STLLoader::load(path, progressCallback);
+                    mesh = STLLoader::load(path, progress);
                 }
             } else {
                 // No extension, try STL
-                mesh = STLLoader::load(path, progressCallback);
+                mesh = STLLoader::load(path, progress);
             }
         } catch (...) {
             // Handle any exceptions during loading

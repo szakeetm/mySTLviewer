@@ -3,6 +3,9 @@
 
 #include <string>
 
+// NOTE: This is a copy of Progress_abstract from the main myGuiFramework project
+// It is included here to allow mySTLviewer to compile and run standalone
+
 // Abstract base class for progress indicators
 // Provides interface for setting progress and messages
 class Progress_abstract {

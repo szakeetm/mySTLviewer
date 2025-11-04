@@ -1,4 +1,5 @@
 #include "XMLLoader.h"
+#include "progress/Progress_abstract.h"  // Include for mySTLviewer standalone compilation
 #include <pugixml.hpp>
 #include <archive.h>
 #include <archive_entry.h>
@@ -7,14 +8,15 @@
 #include <vector>
 #include <cstring>
 
-std::unique_ptr<Mesh> XMLLoader::load(const std::string& filename, XMLLoader::ProgressCallback progressCallback) {
+std::unique_ptr<Mesh> XMLLoader::load(const std::string& filename, Progress_abstract* progress) {
     // Check if it's a zip file
     if (isZipFile(filename)) {
-        return loadFromZip(filename, progressCallback);
+        return loadFromZip(filename, progress);
     }
     
-    if (progressCallback) {
-        progressCallback(0.1f, "Parsing XML file...");
+    if (progress) {
+        progress->setMessage("Parsing XML file...");
+        progress->setProgress(0.1f);
     }
     
     // Otherwise load as regular XML file
@@ -27,14 +29,15 @@ std::unique_ptr<Mesh> XMLLoader::load(const std::string& filename, XMLLoader::Pr
         return nullptr;
     }
     
-    return loadFromXMLString(doc, progressCallback);
+    return loadFromXMLString(doc, progress);
 }
 
-std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc, XMLLoader::ProgressCallback progressCallback) {
+std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc, Progress_abstract* progress) {
     auto mesh = std::make_unique<Mesh>();
     
-    if (progressCallback) {
-        progressCallback(0.2f, "Parsing geometry structure...");
+    if (progress) {
+        progress->setMessage("Parsing geometry structure...");
+        progress->setProgress(0.2f);
     }
     
     // Navigate to Geometry node
@@ -52,10 +55,10 @@ std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc
     }
     
     int nb_vertices = vertices_node.attribute("nb").as_int();
-    std::cout << "Loading XML geometry with " << nb_vertices << " vertices..." << std::endl;
     
-    if (progressCallback) {
-        progressCallback(0.3f, "Loading vertices...");
+    if (progress) {
+        progress->setMessage("Loading vertices...");
+        progress->setProgress(0.3f);
     }
     
     // Reserve space for vertices
@@ -81,14 +84,16 @@ std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc
         vertexCount++;
         
         // Update progress for vertices (30-50% of total)
-        if (progressCallback && nb_vertices > 0 && (vertexCount % 100 == 0 || vertexCount == nb_vertices)) {
+        if (progress && nb_vertices > 0 && (vertexCount % 100 == 0 || vertexCount == nb_vertices)) {
             float vertexProgress = 0.3f + (vertexCount / static_cast<float>(nb_vertices)) * 0.2f;
-            progressCallback(vertexProgress, "Loading vertices...");
+            progress->setMessage("Loading vertices...");
+            progress->setProgress(vertexProgress);
         }
     }
     
-    if (progressCallback) {
-        progressCallback(0.5f, "Loading facets...");
+    if (progress) {
+        progress->setMessage("Loading facets...");
+        progress->setProgress(0.5f);
     }
     
     // Load facets
@@ -99,7 +104,6 @@ std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc
     }
     
     int nb_facets = facets_node.attribute("nb").as_int();
-    std::cout << "Loading " << nb_facets << " facets..." << std::endl;
     
     mesh->facets.reserve(nb_facets);
     
@@ -163,23 +167,23 @@ std::unique_ptr<Mesh> XMLLoader::loadFromXMLString(const pugi::xml_document& doc
         facetCount++;
         
         // Update progress for facets (50-90% of total)
-        if (progressCallback && nb_facets > 0 && (facetCount % 100 == 0 || facetCount == nb_facets)) {
+        if (progress && nb_facets > 0 && (facetCount % 100 == 0 || facetCount == nb_facets)) {
             float facetProgress = 0.5f + (facetCount / static_cast<float>(nb_facets)) * 0.4f;
-            progressCallback(facetProgress, "Loading facets...");
+            progress->setMessage("Loading facets...");
+            progress->setProgress(facetProgress);
         }
     }
     
-    if (progressCallback) {
-        progressCallback(0.9f, "Processing geometry...");
+    if (progress) {
+        progress->setMessage("Processing geometry...");
+        progress->setProgress(0.9f);
     }
-    
-    std::cout << "Loaded " << mesh->vertices.size() << " vertices and " 
-              << mesh->facets.size() << " facets from XML" << std::endl;
     
     mesh->calculateBounds();
     
-    if (progressCallback) {
-        progressCallback(1.0f, "Complete");
+    if (progress) {
+        progress->setMessage("Complete");
+        progress->setProgress(1.0f);
     }
     
     return mesh;
@@ -204,11 +208,10 @@ bool XMLLoader::isZipFile(const std::string& filename) {
     return false;
 }
 
-std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, XMLLoader::ProgressCallback progressCallback) {
-    std::cout << "Loading XML from zip archive: " << filename << std::endl;
-    
-    if (progressCallback) {
-        progressCallback(0.1f, "Opening archive...");
+std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, Progress_abstract* progress) {
+    if (progress) {
+        progress->setMessage("Opening archive...");
+        progress->setProgress(0.1f);
     }
     
     struct archive* a = archive_read_new();
@@ -222,8 +225,9 @@ std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, XMLLoa
         return nullptr;
     }
     
-    if (progressCallback) {
-        progressCallback(0.2f, "Reading archive contents...");
+    if (progress) {
+        progress->setMessage("Reading archive contents...");
+        progress->setProgress(0.2f);
     }
     
     std::unique_ptr<Mesh> mesh = nullptr;
@@ -247,7 +251,6 @@ std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, XMLLoa
                 }
                 
                 foundXML = true;
-                std::cout << "Found XML file in archive: " << name << std::endl;
                 
                 // Read the entire file content
                 size_t size = archive_entry_size(entry);
@@ -262,8 +265,9 @@ std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, XMLLoa
                 
                 buffer[bytes_read] = '\0';
                 
-                if (progressCallback) {
-                    progressCallback(0.3f, "Parsing XML from archive...");
+                if (progress) {
+                    progress->setMessage("Parsing XML from archive...");
+                    progress->setProgress(0.3f);
                 }
                 
                 // Parse the XML from the buffer
@@ -276,7 +280,7 @@ std::unique_ptr<Mesh> XMLLoader::loadFromZip(const std::string& filename, XMLLoa
                     return nullptr;
                 }
                 
-                mesh = loadFromXMLString(doc, progressCallback);
+                mesh = loadFromXMLString(doc, progress);
                 continue;
             }
         }

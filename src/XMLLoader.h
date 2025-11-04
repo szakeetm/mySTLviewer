@@ -3,7 +3,9 @@
 #include "Mesh.h"
 #include <string>
 #include <memory>
-#include <functional>
+
+// Forward declaration - can be Progress_abstract (global) or gui::Progress_abstract
+class Progress_abstract;
 
 // Forward declaration
 namespace pugi {
@@ -12,14 +14,14 @@ namespace pugi {
 
 class XMLLoader {
 public:
-    // Progress callback: (progress, message) where progress is 0.0 to 1.0
-    using ProgressCallback = std::function<void(float, const std::string&)>;
-    
-    static std::unique_ptr<Mesh> load(const std::string& filename, ProgressCallback progressCallback = nullptr);
+    // Load XML/zip file with optional progress reporting
+    // progress can be nullptr if no progress reporting is needed
+    // Accepts both Progress_abstract (global namespace) and gui::Progress_abstract
+    static std::unique_ptr<Mesh> load(const std::string& filename, Progress_abstract* progress = nullptr);
     
 private:
     static bool isXMLGeometry(const std::string& filename);
     static bool isZipFile(const std::string& filename);
-    static std::unique_ptr<Mesh> loadFromZip(const std::string& filename, XMLLoader::ProgressCallback progressCallback);
-    static std::unique_ptr<Mesh> loadFromXMLString(const pugi::xml_document& doc, XMLLoader::ProgressCallback progressCallback);
+    static std::unique_ptr<Mesh> loadFromZip(const std::string& filename, Progress_abstract* progress);
+    static std::unique_ptr<Mesh> loadFromXMLString(const pugi::xml_document& doc, Progress_abstract* progress);
 };
