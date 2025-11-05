@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <limits>
 #include <glm/gtc/type_ptr.hpp>
 #include <mapbox/earcut.hpp>
 #include <array>
@@ -200,9 +201,30 @@ void Renderer::setupMesh() {
     m_edgeIndexCount = edgeIndices.size();
     
     // Upload edge index data to separate buffer
+    if (m_edgeEBO == 0) {
+        std::cerr << "ERROR: m_edgeEBO is 0 before buffer data upload!" << std::endl;
+    }
+    
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, edgeIndices.size() * sizeof(unsigned int),
-                 edgeIndices.data(), GL_STATIC_DRAW);
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO=" 
+                  << m_edgeEBO << "): 0x" << std::hex << err << std::dec << std::endl;
+    }
+    
+    if (edgeIndices.empty()) {
+        std::cerr << "WARNING: edgeIndices is empty, creating empty buffer" << std::endl;
+        // Create a minimal buffer even if empty to avoid errors
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int), nullptr, GL_STATIC_DRAW);
+    } else {
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, edgeIndices.size() * sizeof(unsigned int),
+                     edgeIndices.data(), GL_STATIC_DRAW);
+    }
+    
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after glBufferData for edge EBO: 0x" << std::hex << err << std::dec << std::endl;
+    }
     
     // Bind back to triangle EBO as default
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
@@ -218,6 +240,18 @@ void Renderer::setupMesh() {
     glEnableVertexAttribArray(1);
     
     glBindVertexArray(0);
+    
+    // Verify VAO was created successfully
+    GLboolean isVAO = glIsVertexArray(m_VAO);
+    if (!isVAO && m_VAO != 0) {
+        std::cerr << "WARNING: VAO " << m_VAO << " is not a valid vertex array object after setup!" << std::endl;
+    }
+    
+    // Check for any OpenGL errors after setup
+    GLenum setupErr = glGetError();
+    if (setupErr != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after mesh setup: 0x" << std::hex << setupErr << std::dec << std::endl;
+    }
     
     std::cout << "Mesh setup complete: " << m_mesh->vertices.size() 
               << " vertices, " << m_mesh->facets.size() << " facets, " 
@@ -338,14 +372,60 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
 
     // Pass 2: Wireframe overlay (if enabled)
     if (m_drawWireframe && m_shaderProgramWireframe) {
+        // Validate buffers and counts before rendering
+        if (m_edgeEBO == 0) {
+            std::cerr << "ERROR: Wireframe EBO is 0 (not initialized)" << std::endl;
+            GLenum err = glGetError();
+            if (err != GL_NO_ERROR) {
+                std::cerr << "  OpenGL error before check: 0x" << std::hex << err << std::dec << std::endl;
+            }
+            return;
+        }
+        
+        if (m_edgeIndexCount == 0) {
+            std::cerr << "ERROR: Wireframe edge index count is 0" << std::endl;
+            return;
+        }
+        
+        if (m_VAO == 0) {
+            std::cerr << "ERROR: VAO is 0 (not initialized)" << std::endl;
+            return;
+        }
+        
         glUseProgram(m_shaderProgramWireframe);
+        GLenum err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glUseProgram: 0x" << std::hex << err << std::dec << std::endl;
+        }
+        
         GLint projLoc = glGetUniformLocation(m_shaderProgramWireframe, "projection");
         GLint viewLoc = glGetUniformLocation(m_shaderProgramWireframe, "view");
         GLint modelLoc = glGetUniformLocation(m_shaderProgramWireframe, "model");
         GLint colorLoc = glGetUniformLocation(m_shaderProgramWireframe, "lineColor");
+        
+        if (projLoc == -1 || viewLoc == -1 || modelLoc == -1 || colorLoc == -1) {
+            std::cerr << "ERROR: Failed to get uniform locations in wireframe shader" << std::endl;
+            std::cerr << "  projLoc=" << projLoc << ", viewLoc=" << viewLoc 
+                      << ", modelLoc=" << modelLoc << ", colorLoc=" << colorLoc << std::endl;
+        }
+        
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glUniformMatrix4fv(projection): 0x" << std::hex << err << std::dec << std::endl;
+        }
+        
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glUniformMatrix4fv(view): 0x" << std::hex << err << std::dec << std::endl;
+        }
+        
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glUniformMatrix4fv(model): 0x" << std::hex << err << std::dec << std::endl;
+        }
         
         // White when wireframe-only, black when overlaid on solid
         if (m_drawSolid) {
@@ -353,12 +433,128 @@ void Renderer::render(const glm::mat4& projection, const glm::mat4& view, const 
         } else {
             glUniform3f(colorLoc, 1.0f, 1.0f, 1.0f); // white wireframe
         }
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glUniform3f(colorLoc): 0x" << std::hex << err << std::dec << std::endl;
+        }
 
         glLineWidth(1.5f);
         glDisable(GL_CULL_FACE);
+        
+        // Check if VAO is valid before binding
+        if (m_VAO == 0) {
+            std::cerr << "ERROR: Cannot bind VAO - m_VAO is 0" << std::endl;
+            return;
+        }
+        
+        // Clear any pending OpenGL errors before binding
+        while (glGetError() != GL_NO_ERROR) {
+            // Clear all pending errors
+        }
+        
+        // Verify VAO exists before binding
+        GLboolean isVAO = glIsVertexArray(m_VAO);
+        if (!isVAO) {
+            std::cerr << std::endl << "=== WIREFRAME RENDERING ERROR ===" << std::endl;
+            std::cerr << "ERROR: m_VAO=" << m_VAO << " is not a valid vertex array object!" << std::endl;
+            std::cerr << "  This could mean the VAO was deleted or created in a different context" << std::endl;
+            std::cerr << "  m_VBO=" << m_VBO << ", m_EBO=" << m_EBO << ", m_edgeEBO=" << m_edgeEBO << std::endl;
+            std::cerr << "  m_indexCount=" << m_indexCount << ", m_edgeIndexCount=" << m_edgeIndexCount << std::endl;
+            std::cerr << "========================================" << std::endl << std::endl;
+            return;
+        }
+        
+        // Verify VAO exists (check if it's a valid name)
+        GLint currentVAO = 0;
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
+        
         glBindVertexArray(m_VAO);
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glBindVertexArray(m_VAO=" << m_VAO << "): 0x" 
+                      << std::hex << err << std::dec << std::endl;
+            if (err == 0x501) { // GL_INVALID_VALUE
+                std::cerr << "  GL_INVALID_VALUE: VAO handle is invalid or was deleted" << std::endl;
+                std::cerr << "  Previous VAO binding was: " << currentVAO << std::endl;
+                // Verify VAO again after failed bind
+                isVAO = glIsVertexArray(m_VAO);
+                std::cerr << "  glIsVertexArray(m_VAO) after failed bind returns: " 
+                          << (isVAO ? "GL_TRUE" : "GL_FALSE") << std::endl;
+            }
+            return;
+        }
+        
+        // Verify VAO was actually bound
+        GLint newVAO = 0;
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &newVAO);
+        if (newVAO != static_cast<GLint>(m_VAO)) {
+            std::cerr << "WARNING: VAO binding failed - expected " << m_VAO 
+                      << " but got " << newVAO << std::endl;
+        }
+        
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO);
-        glDrawElements(GL_LINES, m_edgeIndexCount, GL_UNSIGNED_INT, 0);
+        err = glGetError();
+        if (err != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_edgeEBO=" 
+                      << m_edgeEBO << "): 0x" << std::hex << err << std::dec << std::endl;
+        }
+        
+        // Validate buffer before drawing
+        GLint bufferBinding = 0;
+        glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &bufferBinding);
+        if (bufferBinding == 0) {
+            std::cerr << "ERROR: ELEMENT_ARRAY_BUFFER is not bound (binding=0)" << std::endl;
+            glBindVertexArray(0);
+            return;
+        }
+        
+        if (bufferBinding != static_cast<GLint>(m_edgeEBO)) {
+            std::cerr << "WARNING: ELEMENT_ARRAY_BUFFER binding mismatch: expected=" 
+                      << m_edgeEBO << ", actual=" << bufferBinding << std::endl;
+        }
+        
+        // Verify buffer size matches expected count
+        GLint bufferSize = 0;
+        glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSize);
+        size_t expectedSize = m_edgeIndexCount * sizeof(unsigned int);
+        if (bufferSize != static_cast<GLint>(expectedSize) && m_edgeIndexCount > 0) {
+            std::cerr << "WARNING: Buffer size mismatch: expected=" << expectedSize 
+                      << " bytes, actual=" << bufferSize << " bytes" << std::endl;
+        }
+        
+        if (m_edgeIndexCount > 0) {
+            // Check if count is valid (must be positive and even for GL_LINES)
+            if (m_edgeIndexCount % 2 != 0) {
+                std::cerr << "ERROR: edgeIndexCount is not even (" << m_edgeIndexCount 
+                          << "), cannot draw GL_LINES" << std::endl;
+            } else {
+                // Check for potential overflow (GLsizei max value)
+                const GLsizei maxCount = std::numeric_limits<GLsizei>::max();
+                if (m_edgeIndexCount > static_cast<size_t>(maxCount)) {
+                    std::cerr << "ERROR: edgeIndexCount (" << m_edgeIndexCount 
+                              << ") exceeds GLsizei max (" << maxCount << ")" << std::endl;
+                } else {
+                    glDrawElements(GL_LINES, static_cast<GLsizei>(m_edgeIndexCount), GL_UNSIGNED_INT, 0);
+                    err = glGetError();
+                    if (err != GL_NO_ERROR) {
+                        std::cerr << "OpenGL error after glDrawElements(GL_LINES, count=" 
+                                  << m_edgeIndexCount << "): 0x" << std::hex << err << std::dec << std::endl;
+                        std::cerr << "  VAO=" << m_VAO << ", edgeEBO=" << m_edgeEBO 
+                                  << ", edgeIndexCount=" << m_edgeIndexCount 
+                                  << ", bufferBinding=" << bufferBinding << std::endl;
+                        // Try to decode the error
+                        if (err == GL_INVALID_VALUE) {
+                            std::cerr << "  GL_INVALID_VALUE: count parameter is invalid" << std::endl;
+                        } else if (err == GL_INVALID_OPERATION) {
+                            std::cerr << "  GL_INVALID_OPERATION: invalid operation" << std::endl;
+                        }
+                    }
+                }
+            }
+        } else {
+            std::cerr << "ERROR: Attempting to draw with edgeIndexCount=0" << std::endl;
+        }
+        
         glBindVertexArray(0);
     }
 
