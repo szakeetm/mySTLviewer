@@ -28,6 +28,7 @@ public:
                     m_frameCount(0), m_lastFpsTime(0), m_fps(0.0f),
                     m_bgVAO(0), m_bgVBO(0), m_bgShaderProgram(0),
                     m_pivotActive(false), m_pivotModel(0.0f),
+                    m_showPivotAxes(false), m_displayPivotModel(0.0f),
                     m_axesVAO(0), m_axesVBO(0), m_axesProgram(0), m_axisLength(0.0f)
 #ifdef HAVE_OPENMP
                     , m_useOpenMP(true)
@@ -39,8 +40,6 @@ public:
                     , m_isDKeyPressed(false)
                     , m_isLKeyPressed(false)
                     , m_isLeftDragging(false)
-                    , m_lastMouseX(0)
-                    , m_lastMouseY(0)
                     , m_drawFacetNormals(false) {}
     
     ~Application() {
@@ -415,6 +414,9 @@ private:
                     if (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) {
                         computeScreenCache();
                     }
+                    if (event.button.button == SDL_BUTTON_RIGHT && !m_isLKeyPressed) {
+                        clearPivot();
+                    }
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         m_isLeftDragging = false;
                         // Recompute screen cache if we were using trackpad controls
@@ -426,16 +428,12 @@ private:
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         m_isLeftDragging = true;
-                        m_lastMouseX = event.button.x;
-                        m_lastMouseY = event.button.y;
-                        
-                        // If we're not in trackpad mode (Z or D not pressed), do pivot selection
-                        if (!m_isZKeyPressed && !m_isDKeyPressed) {
-                            if (!m_cacheValid) {
-                                computeScreenCache();
-                            }
-                            pickPivot(m_lastMouseX, m_lastMouseY);
+                    }
+                    if (event.button.button == SDL_BUTTON_RIGHT && !m_isLKeyPressed) {
+                        if (!m_cacheValid) {
+                            computeScreenCache();
                         }
+                        pickPivot(event.button.x, event.button.y);
                     }
                     break;
                     
@@ -466,6 +464,40 @@ private:
         }
         m_pan = glm::vec2(0.0f);
         m_pivotActive = false;
+        m_showPivotAxes = false;
+        m_cacheValid = false;
+    }
+
+    void clearPivot() {
+        if (!m_renderer.getMesh() || !m_pivotActive) {
+            m_pivotActive = false;
+            m_showPivotAxes = false;
+            m_cacheValid = false;
+            return;
+        }
+
+        glm::vec3 center = m_renderer.getMesh()->getCenter();
+        glm::mat4 modelWithPivot = glm::mat4(1.0f);
+        glm::vec3 pPrime = m_pivotModel - center;
+        modelWithPivot = glm::translate(modelWithPivot, pPrime);
+        modelWithPivot = glm::rotate(modelWithPivot, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+        modelWithPivot = glm::rotate(modelWithPivot, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelWithPivot = glm::translate(modelWithPivot, -pPrime);
+        modelWithPivot = glm::translate(modelWithPivot, -center);
+
+        glm::mat4 modelWithoutPivot = glm::mat4(1.0f);
+        modelWithoutPivot = glm::rotate(modelWithoutPivot, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
+        modelWithoutPivot = glm::rotate(modelWithoutPivot, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelWithoutPivot = glm::translate(modelWithoutPivot, -center);
+
+        glm::vec3 worldBefore = glm::vec3(modelWithPivot * glm::vec4(m_pivotModel, 1.0f));
+        glm::vec3 worldAfter = glm::vec3(modelWithoutPivot * glm::vec4(m_pivotModel, 1.0f));
+        glm::vec3 delta = worldAfter - worldBefore;
+
+        m_pan.x -= delta.x;
+        m_pan.y -= delta.y;
+        m_pivotActive = false;
+        m_showPivotAxes = false;
         m_cacheValid = false;
     }
 
@@ -663,8 +695,8 @@ private:
         
         m_renderer.render(projection, view, model, lightDirection);
 
-        // Draw pivot axes if active
-        if (m_pivotActive && m_renderer.getMesh()) {
+        // Draw the current rotation center while a right-drag pivot is active.
+        if (m_showPivotAxes && m_renderer.getMesh()) {
             drawPivotAxes(projection, view, model);
         }
         
@@ -712,6 +744,8 @@ private:
     // Pivot selection and axes rendering
     bool m_pivotActive;
     glm::vec3 m_pivotModel;
+    bool m_showPivotAxes;
+    glm::vec3 m_displayPivotModel;
     GLuint m_axesVAO;
     GLuint m_axesVBO;
     GLuint m_axesProgram;
@@ -731,8 +765,6 @@ private:
     bool m_isDKeyPressed;    // D key for pan mode  
     bool m_isLKeyPressed;    // L key for light rotation mode
     bool m_isLeftDragging;   // left mouse dragging state
-    int m_lastMouseX;        // previous mouse X position
-    int m_lastMouseY;        // previous mouse Y position
     glm::vec2 m_zoomAnchorNdc{0.0f, 0.0f};
     bool m_drawFacetNormals; // toggle for facet normals debug
     
@@ -779,6 +811,8 @@ private:
             m_zoom = extent * 1.5f;
             m_axisLength = extent * 0.1f;
             m_pivotActive = false; // reset pivot on new load
+            m_showPivotAxes = false;
+            m_displayPivotModel = m_renderer.getMesh()->getCenter();
         }
         return true;
     }
@@ -889,25 +923,14 @@ private:
             return;
         }
 
-        // If too far from any vertex, disable pivot mode
+        m_displayPivotModel = center;
+        m_showPivotAxes = true;
+
+        // If too far from any vertex, rotate around the default scene center.
         const float maxPixelDist = 100.0f;
         if (bestDist2 > maxPixelDist * maxPixelDist) {
-            if (m_pivotActive) {
-                // Keep the current pivot point fixed on screen when disabling pivot
-                glm::vec4 worldBefore4 = modelOld * glm::vec4(m_pivotModel, 1.0f);
-                glm::vec3 worldBefore(worldBefore4);
-                glm::mat4 modelNoPivot = glm::mat4(1.0f);
-                modelNoPivot = glm::rotate(modelNoPivot, glm::radians(m_rotationX), glm::vec3(1.0f, 0.0f, 0.0f));
-                modelNoPivot = glm::rotate(modelNoPivot, glm::radians(m_rotationY), glm::vec3(0.0f, 1.0f, 0.0f));
-                modelNoPivot = glm::translate(modelNoPivot, -center);
-                glm::vec4 worldAfter4 = modelNoPivot * glm::vec4(m_pivotModel, 1.0f);
-                glm::vec3 worldAfter(worldAfter4);
-                glm::vec3 delta = worldAfter - worldBefore;
-                m_pan.x -= delta.x;
-                m_pan.y -= delta.y;
-                std::cout << "Click far from vertices; pivot disabled" << std::endl;
-            }
             m_pivotActive = false;
+            m_cacheValid = false;
             return;
         }
 
@@ -934,9 +957,10 @@ private:
 
         // Finally, set the pivot
         m_pivotModel = bestPos;
+        m_displayPivotModel = bestPos;
         m_pivotActive = true;
-        double ms = (SDL_GetTicksNS() - t0) / 1.0e6;
-        std::cout << "Pivot selected at model coords: (" << bestPos.x << ", " << bestPos.y << ", " << bestPos.z << ") in " << (int)ms << " ms" << std::endl;
+        m_cacheValid = false;
+        (void)t0;
     }
 
     void computeScreenCache() {
@@ -1013,7 +1037,7 @@ private:
     void drawPivotAxes(const glm::mat4& projection, const glm::mat4& view, const glm::mat4& model) {
         if (!m_axesProgram) return;
         // Compute world-space pivot position and axis directions from model matrix
-        glm::vec4 worldPivot4 = model * glm::vec4(m_pivotModel, 1.0f);
+        glm::vec4 worldPivot4 = model * glm::vec4(m_displayPivotModel, 1.0f);
         glm::vec3 worldPivot(worldPivot4);
         glm::mat3 rot = glm::mat3(model); // extract rotation+scale; our model has only rotation
         glm::vec3 dirX = glm::normalize(rot * glm::vec3(1,0,0)) * m_axisLength;
@@ -1079,8 +1103,7 @@ int main(int argc, char* argv[]) {
     
     // Display controls
     std::cout << "\nControls:" << std::endl;
-    std::cout << "  Right Mouse + Drag: Rotate model" << std::endl;
-    std::cout << "  Left Mouse: Pick pivot (draw axes)" << std::endl;
+    std::cout << "  Right Mouse + Drag: Rotate around closest vertex under cursor, or scene center if none is nearby" << std::endl;
     std::cout << "  Middle Mouse + Drag: Pan view" << std::endl;
     std::cout << "  Mouse Wheel: Zoom in/out" << std::endl;
     std::cout << "" << std::endl;

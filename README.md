@@ -85,8 +85,7 @@ mySTLViewer [geometry_file]
 ### Controls
 
 #### Mouse Controls
-- **Right Mouse Button + Drag**: Rotate the model
-- **Left Mouse Button (click)**: Pick a rotation pivot (closest vertex under cursor); axes appear at the pivot
+- **Right Mouse Button + Drag**: Rotate around the closest vertex under the cursor; if no nearby vertex is found, rotate around the scene center, with axes shown at the active rotation center
 - **Middle Mouse Button + Drag**: Pan the view
 - **Mouse Wheel**: Zoom in/out
 
@@ -121,10 +120,10 @@ mySTLViewer [geometry_file]
 - **M**: Toggle OpenMP-based pivot picking (if enabled in build)
 
 #### Custom Pivot Notes
-- When a pivot is selected, rotations occur around that point; otherwise the model rotates around its center
-- If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically
-- Selecting a pivot does not shift the view; the chosen point stays under the cursor
-- Colored axes (RGB = XYZ) appear at the selected pivot point
+- When you start a right-drag near a vertex, rotation uses that vertex as a temporary pivot for that drag
+- If the cursor is more than about 100 px from every vertex, rotation falls back to the default scene center
+- Entering and leaving the temporary pivot keeps the view stable; the model does not jump when the drag starts or ends
+- Colored axes (RGB = XYZ) appear at the active rotation center during right-drag, including the scene-center fallback case
 
 ## Project Structure
 
