@@ -35,13 +35,6 @@ public:
                     , m_useOpenMP(false)
 #endif
                     , m_cacheValid(false)
-                    , m_kineticEnabled(false)
-                    , m_isRightDragging(false)
-                    , m_rotVelX(0.0f)
-                    , m_rotVelY(0.0f)
-                    , m_zoomVel(0.0f)
-                    , m_lastUpdateNS(0)
-                    , m_lastDragMotionNS(0)
                     , m_isZKeyPressed(false)
                     , m_isDKeyPressed(false)
                     , m_isLKeyPressed(false)
@@ -173,17 +166,10 @@ public:
     void run() {
         m_running = true;
         m_lastFpsTime = SDL_GetTicksNS();
-        m_lastUpdateNS = m_lastFpsTime;
         m_frameCount = 0;
         
         while (m_running) {
             handleEvents();
-            // Kinetic update (rotation + zoom; pan is not affected)
-            Uint64 nowNS = SDL_GetTicksNS();
-            float dt = static_cast<float>(nowNS - m_lastUpdateNS) / 1.0e9f;
-            if (dt > 0.1f) dt = 0.1f; // clamp long pauses
-            if (dt > 0.0f) updateKinetics(dt);
-            m_lastUpdateNS = nowNS;
             render();
             updateFPS();
         }
@@ -386,18 +372,6 @@ private:
                             m_rotationX += dyAngle;
                             m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
                             m_cacheValid = false;
-                            if (m_kineticEnabled) {
-                                m_isRightDragging = true;
-                                Uint64 nowNS = SDL_GetTicksNS();
-                                if (m_lastDragMotionNS == 0) m_lastDragMotionNS = nowNS;
-                                float dtd = static_cast<float>(nowNS - m_lastDragMotionNS) / 1.0e9f;
-                                if (dtd > 0.0f && dtd < 0.05f) {
-                                    // deg/sec velocities
-                                    m_rotVelX = dyAngle / dtd;
-                                    m_rotVelY = dxAngle / dtd;
-                                }
-                                m_lastDragMotionNS = nowNS;
-                            }
                         }
                     }
                     // Handle middle mouse button panning
@@ -421,10 +395,6 @@ private:
                             // Convert mouse movement to scroll wheel equivalent: negative yrel = zoom in
                             float scrollEquivalent = -event.motion.yrel * 0.1f; // Convert pixels to scroll units
                             applyZoomWithAnchor(scrollEquivalent, m_zoomAnchorNdc);
-                            if (m_kineticEnabled) {
-                                // Add an inertial impulse proportional to zoom scale (units/sec)
-                                m_zoomVel += scrollEquivalent * (m_zoom * 0.6f);
-                            }
                         } else if (m_isDKeyPressed) {
                             // D + left drag = pan (similar to middle mouse)
                             int width = 1, height = 1;
@@ -444,11 +414,6 @@ private:
                 case SDL_EVENT_MOUSE_BUTTON_UP:
                     if (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) {
                         computeScreenCache();
-                    }
-                    if (event.button.button == SDL_BUTTON_RIGHT) {
-                        // End rotation drag; inertia will continue if enabled
-                        m_isRightDragging = false;
-                        m_lastDragMotionNS = 0;
                     }
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         m_isLeftDragging = false;
@@ -472,21 +437,12 @@ private:
                             pickPivot(m_lastMouseX, m_lastMouseY);
                         }
                     }
-                    if (event.button.button == SDL_BUTTON_RIGHT) {
-                        m_isRightDragging = true;
-                        m_rotVelX = m_rotVelY = 0.0f; // will accumulate during motion
-                        m_lastDragMotionNS = SDL_GetTicksNS();
-                    }
                     break;
                     
                 case SDL_EVENT_MOUSE_WHEEL:
                     {
                         // Scale zoom speed with current zoom level (5% of current zoom)
                         applyZoomAtScreenPoint(event.wheel.y, event.wheel.mouse_x, event.wheel.mouse_y);
-                        if (m_kineticEnabled) {
-                            // Add an inertial impulse proportional to zoom scale (units/sec)
-                            m_zoomVel += event.wheel.y * (m_zoom * 0.6f);
-                        }
                     }
                     break;
                     
@@ -635,10 +591,6 @@ private:
             case SDL_SCANCODE_R:
                 resetView();
                 break;
-            case SDL_SCANCODE_K:
-                m_kineticEnabled = !m_kineticEnabled;
-                std::cout << "Kinetic rotate/zoom: " << (m_kineticEnabled ? "ON" : "OFF") << std::endl;
-                break;
             default:
                 // no-op
                 break;
@@ -664,37 +616,6 @@ private:
         }
     }
 
-    // Kinetic motion update (rotation + zoom, no pan)
-    void updateKinetics(float dt) {
-        if (!m_kineticEnabled) return;
-        bool changed = false;
-
-        // rotational inertia (when not dragging)
-        if (!m_isRightDragging) {
-            if (std::abs(m_rotVelX) > K_ROTATE_EPS || std::abs(m_rotVelY) > K_ROTATE_EPS) {
-                m_rotationX += m_rotVelX * dt;
-                m_rotationY += m_rotVelY * dt;
-                m_rotationX = glm::clamp(m_rotationX, -89.0f, 89.0f);
-                // damping
-                m_rotVelX -= m_rotVelX * K_ROTATE_DAMP * dt;
-                m_rotVelY -= m_rotVelY * K_ROTATE_DAMP * dt;
-                if (std::abs(m_rotVelX) <= K_ROTATE_EPS) m_rotVelX = 0.0f;
-                if (std::abs(m_rotVelY) <= K_ROTATE_EPS) m_rotVelY = 0.0f;
-                changed = true;
-            }
-        }
-
-        // zoom inertia
-        if (std::abs(m_zoomVel) > K_ZOOM_EPS) {
-            applyZoomWithAnchor(m_zoomVel * dt, m_zoomAnchorNdc);
-            m_zoomVel -= m_zoomVel * K_ZOOM_DAMP * dt;
-            if (std::abs(m_zoomVel) <= K_ZOOM_EPS) m_zoomVel = 0.0f;
-            changed = true;
-        }
-
-        if (changed) m_cacheValid = false;
-    }
-    
     void render() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
@@ -804,14 +725,6 @@ private:
     // Cached screen-space vertex coordinates and validity flag
     std::vector<glm::vec2> m_screenCache;
     bool m_cacheValid;
-    // Kinetic control state
-    bool m_kineticEnabled;   // toggled by K, off by default
-    bool m_isRightDragging;  // track rotation dragging
-    float m_rotVelX;         // deg/sec for X rotation
-    float m_rotVelY;         // deg/sec for Y rotation
-    float m_zoomVel;         // zoom units/sec
-    Uint64 m_lastUpdateNS;   // last integration timestamp
-    Uint64 m_lastDragMotionNS; // last motion timestamp during drag
 
     // Alternative trackpad controls
     bool m_isZKeyPressed;    // Z key for zoom mode
@@ -827,11 +740,6 @@ private:
     float m_lightRotationX;  // light rotation around X axis (degrees)
     float m_lightRotationY;  // light rotation around Y axis (degrees)
 
-    // Kinetic tuning constants
-    static constexpr float K_ROTATE_DAMP = 4.0f; // s^-1
-    static constexpr float K_ZOOM_DAMP   = 5.0f; // s^-1
-    static constexpr float K_ROTATE_EPS  = 2.0f; // deg/s threshold
-    static constexpr float K_ZOOM_EPS    = 1e-3f; // units/s threshold
     bool loadGeometry(const std::string& path) {
         std::unique_ptr<Mesh> mesh;
         
@@ -871,9 +779,6 @@ private:
             m_zoom = extent * 1.5f;
             m_axisLength = extent * 0.1f;
             m_pivotActive = false; // reset pivot on new load
-            // clear kinetic velocities
-            m_rotVelX = m_rotVelY = 0.0f;
-            m_zoomVel = 0.0f;
         }
         return true;
     }
@@ -1183,7 +1088,6 @@ int main(int argc, char* argv[]) {
     std::cout << "  Z + Left Drag: Zoom in/out" << std::endl;
     std::cout << "  D + Left Drag: Pan view" << std::endl;
     std::cout << "" << std::endl;
-    std::cout << "  K: Toggle kinetic rotate/zoom (inertia; no pan)" << std::endl;
     std::cout << "  V: Toggle VSync" << std::endl;
     std::cout << "  M: Toggle OpenMP picking" << std::endl;
     std::cout << "  C: Toggle back-face culling" << std::endl;

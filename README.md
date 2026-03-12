@@ -18,7 +18,6 @@ A modern OpenGL-based STL file viewer built with CMake, vcpkg, SDL3, and OpenGL 
 - **Debug Visualization**: Toggle overlays for facet normals, triangle normals, and triangle edges
 - **Orthogonal Projection**: Clean orthographic view of 3D models
 - **Interactive Controls**: Mouse-based rotation, pan, zoom, custom rotation pivot, and light source rotation
-- **Kinetic Motion**: Optional inertial rotation and zoom for smooth interaction
 - **Startup File Dialog**: Native file chooser on launch (argument optional)
 - **Cross-platform**: Built with CMake and vcpkg for easy portability
 
@@ -108,7 +107,6 @@ mySTLViewer [geometry_file]
 
 ##### View Controls
 - **R**: Reset view to default position, clear custom pivot, and reset light direction
-- **K**: Toggle kinetic rotate/zoom (inertia; pan is not affected)
 - **V**: Toggle VSync
 
 ##### Lighting Controls
@@ -127,13 +125,6 @@ mySTLViewer [geometry_file]
 - If you click far from the model (more than ~100 px from any vertex), pivot mode is disabled automatically
 - Selecting a pivot does not shift the view; the chosen point stays under the cursor
 - Colored axes (RGB = XYZ) appear at the selected pivot point
-
-#### Kinetic Controls
-- Disabled by default; toggle with the **K** key
-- Rotation inertia continues after you release the right mouse button, based on your last drag velocity
-- Zoom inertia continues briefly after a mouse wheel scroll
-- Panning is never affected by kinetic motion
-- Adjustable damping keeps motion smooth and natural
 
 ## Project Structure
 
