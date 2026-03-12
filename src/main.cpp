@@ -420,10 +420,7 @@ private:
                             // Z + left drag = zoom (similar to mouse wheel)
                             // Convert mouse movement to scroll wheel equivalent: negative yrel = zoom in
                             float scrollEquivalent = -event.motion.yrel * 0.1f; // Convert pixels to scroll units
-                            float zoomDelta = scrollEquivalent * m_zoom * 0.1f; // Same formula as mouse wheel
-                            m_zoom -= zoomDelta; // Same operation as mouse wheel
-                            m_zoom = glm::max(0.1f, m_zoom);
-                            m_cacheValid = false;
+                            applyZoomWithAnchor(scrollEquivalent, m_zoomAnchorNdc);
                             if (m_kineticEnabled) {
                                 // Add an inertial impulse proportional to zoom scale (units/sec)
                                 m_zoomVel += scrollEquivalent * (m_zoom * 0.6f);
@@ -485,10 +482,7 @@ private:
                 case SDL_EVENT_MOUSE_WHEEL:
                     {
                         // Scale zoom speed with current zoom level (5% of current zoom)
-                        float zoomDelta = event.wheel.y * m_zoom * 0.1f;
-                        m_zoom -= zoomDelta;
-                        m_zoom = glm::max(0.1f, m_zoom);
-                        m_cacheValid = false;
+                        applyZoomAtScreenPoint(event.wheel.y, event.wheel.mouse_x, event.wheel.mouse_y);
                         if (m_kineticEnabled) {
                             // Add an inertial impulse proportional to zoom scale (units/sec)
                             m_zoomVel += event.wheel.y * (m_zoom * 0.6f);
@@ -517,6 +511,56 @@ private:
         m_pan = glm::vec2(0.0f);
         m_pivotActive = false;
         m_cacheValid = false;
+    }
+
+    glm::vec2 getNormalizedDeviceCoordinates(float screenX, float screenY) const {
+        int width = 1, height = 1;
+        SDL_GetWindowSize(m_window, &width, &height);
+        width = glm::max(width, 1);
+        height = glm::max(height, 1);
+
+        const float ndcX = (2.0f * screenX) / static_cast<float>(width) - 1.0f;
+        const float ndcY = 1.0f - (2.0f * screenY) / static_cast<float>(height);
+        return glm::vec2(ndcX, ndcY);
+    }
+
+    void captureZoomAnchorAtCurrentMouse() {
+        float mouseX = 0.0f;
+        float mouseY = 0.0f;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        m_zoomAnchorNdc = getNormalizedDeviceCoordinates(mouseX, mouseY);
+    }
+
+    void applyZoomWithAnchor(float wheelSteps, const glm::vec2& ndcAnchor) {
+        if (wheelSteps == 0.0f) {
+            return;
+        }
+
+        int width = 1, height = 1;
+        SDL_GetWindowSize(m_window, &width, &height);
+        width = glm::max(width, 1);
+        height = glm::max(height, 1);
+
+        const float aspect = static_cast<float>(width) / static_cast<float>(height);
+        const float oldZoom = m_zoom;
+        const float zoomDelta = wheelSteps * oldZoom * 0.1f;
+        const float newZoom = glm::max(0.1f, oldZoom - zoomDelta);
+
+        if (newZoom == oldZoom) {
+            return;
+        }
+
+        const float zoomChange = newZoom - oldZoom;
+
+        m_pan.x += ndcAnchor.x * aspect * zoomChange;
+        m_pan.y += ndcAnchor.y * zoomChange;
+        m_zoom = newZoom;
+        m_cacheValid = false;
+    }
+
+    void applyZoomAtScreenPoint(float wheelSteps, float screenX, float screenY) {
+        m_zoomAnchorNdc = getNormalizedDeviceCoordinates(screenX, screenY);
+        applyZoomWithAnchor(wheelSteps, m_zoomAnchorNdc);
     }
     
     void handleKeyPress(SDL_Scancode scancode, SDL_Keymod mod) {
@@ -604,6 +648,9 @@ private:
     void handleKeyState(SDL_Scancode scancode, bool pressed) {
         switch (scancode) {
             case SDL_SCANCODE_Z:
+                if (pressed && !m_isZKeyPressed) {
+                    captureZoomAnchorAtCurrentMouse();
+                }
                 m_isZKeyPressed = pressed;
                 break;
             case SDL_SCANCODE_D:
@@ -639,8 +686,7 @@ private:
 
         // zoom inertia
         if (std::abs(m_zoomVel) > K_ZOOM_EPS) {
-            m_zoom -= m_zoomVel * dt;
-            m_zoom = glm::max(0.1f, m_zoom);
+            applyZoomWithAnchor(m_zoomVel * dt, m_zoomAnchorNdc);
             m_zoomVel -= m_zoomVel * K_ZOOM_DAMP * dt;
             if (std::abs(m_zoomVel) <= K_ZOOM_EPS) m_zoomVel = 0.0f;
             changed = true;
@@ -774,6 +820,7 @@ private:
     bool m_isLeftDragging;   // left mouse dragging state
     int m_lastMouseX;        // previous mouse X position
     int m_lastMouseY;        // previous mouse Y position
+    glm::vec2 m_zoomAnchorNdc{0.0f, 0.0f};
     bool m_drawFacetNormals; // toggle for facet normals debug
     
     // Light rotation controls
